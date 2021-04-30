@@ -8,7 +8,7 @@
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -29,11 +29,11 @@
 #endif /* __i386__ || __x86_64__ */
 
 #ifndef DIRECTHW_VERSION
-#define DIRECTHW_VERSION "1.4"
+#define DIRECTHW_VERSION "1.5.0"
 #endif /* DIRECTHW_VERSION */
 
 #ifndef DIRECTHW_VERNUM
-#define DIRECTHW_VERNUM 0x00100400
+#define DIRECTHW_VERNUM 0x00100500
 #endif /* DIRECTHW_VERNUM */
 
 #ifndef APPLE_KEXT_OVERRIDE
@@ -51,20 +51,20 @@
 
 #ifndef rdmsr
 #define rdmsr(msr, lo, hi) \
-    __asm__ volatile("rdmsr" : "=a" (lo), "=d" (hi) : "c" (msr))
+__asm__ volatile("rdmsr" : "=a" (lo), "=d" (hi) : "c" (msr))
 #endif /* rdmsr */
 
 #ifndef wrmsr
 #define wrmsr(msr, lo, hi) \
-    __asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
+__asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
 #endif /*  wrmsr */
 
 class DirectHWService : public IOService
 {
-	OSDeclareDefaultStructors(DirectHWService)
+    OSDeclareDefaultStructors(DirectHWService)
 
 public:
-	virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
+    virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
 };
 
 /* */
@@ -72,40 +72,40 @@ public:
 
 class DirectHWUserClient : public IOUserClient
 {
-	OSDeclareDefaultStructors(DirectHWUserClient)
+    OSDeclareDefaultStructors(DirectHWUserClient)
 
-	enum {
-		kReadIO,
-		kWriteIO,
-		kPrepareMap,
-		kReadMSR,
-		kWriteMSR,
-		kNumberOfMethods
-	};
+    enum {
+        kReadIO,
+        kWriteIO,
+        kPrepareMap,
+        kReadMSR,
+        kWriteMSR,
+        kNumberOfMethods
+    };
 
-	typedef struct {
+    typedef struct {
 #if defined(__x86_64__) || defined(__arm64__)
         UInt64 offset;
         UInt64 width;
         UInt64 data;
 #else /* __i386__ || __arm__ */
-		UInt32 offset;
-		UInt32 width;
-		UInt32 data;
+        UInt32 offset;
+        UInt32 width;
+        UInt32 data;
 #endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
-	} iomem_t;
+    } iomem_t;
 
-	typedef struct {
+    typedef struct {
 #if defined(__x86_64__) || defined(__arm64__)
-		UInt64 addr;
-		UInt64 size;
+        UInt64 addr;
+        UInt64 size;
 #else /* __i386__ || __arm__ */
         UInt32 addr;
         UInt32 size;
 #endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
-	} map_t;
+    } map_t;
 
-	typedef struct {
+    typedef struct {
         UInt32 core;
         UInt32 index;
 
@@ -123,28 +123,29 @@ class DirectHWUserClient : public IOUserClient
 #endif /* __BIG_ENDIAN__ */
             } io32;
         } val;
-	} msrcmd_t;
+    } msrcmd_t;
+
 
 public:
-	virtual bool initWithTask(task_t task, void *securityID, UInt32 type) APPLE_KEXT_OVERRIDE;
+    virtual bool initWithTask(task_t task, void *securityID, UInt32 type) APPLE_KEXT_OVERRIDE;
 
-	virtual bool start(IOService * provider) APPLE_KEXT_OVERRIDE;
-	virtual void stop(IOService * provider) APPLE_KEXT_OVERRIDE;
+    virtual bool start(IOService * provider) APPLE_KEXT_OVERRIDE;
+    virtual void stop(IOService * provider) APPLE_KEXT_OVERRIDE;
 
-	virtual IOReturn clientMemoryForType(UInt32 type, UInt32 *flags, IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
+    virtual IOReturn clientMemoryForType(UInt32 type, UInt32 *flags, IOMemoryDescriptor **memory) APPLE_KEXT_OVERRIDE;
 
-	virtual IOReturn clientClose(void) APPLE_KEXT_OVERRIDE;
+    virtual IOReturn clientClose(void) APPLE_KEXT_OVERRIDE;
 
 protected:
-	DirectHWService *fProvider;
+    DirectHWService *fProvider;
 
-	static const IOExternalMethod fMethods[kNumberOfMethods];
+    static const IOExternalMethod fMethods[kNumberOfMethods];
     static const IOExternalAsyncMethod fAsyncMethods[kNumberOfMethods];
 
-	virtual IOExternalMethod *getTargetAndMethodForIndex(LIBKERN_RETURNS_NOT_RETAINED IOService ** target, UInt32 index) APPLE_KEXT_OVERRIDE;
+    virtual IOExternalMethod *getTargetAndMethodForIndex(LIBKERN_RETURNS_NOT_RETAINED IOService ** target, UInt32 index) APPLE_KEXT_OVERRIDE;
     virtual IOExternalAsyncMethod *getAsyncTargetAndMethodForIndex(LIBKERN_RETURNS_NOT_RETAINED IOService ** target, UInt32 index) APPLE_KEXT_OVERRIDE;
 
-	virtual IOReturn ReadIO(iomem_t *inStruct, iomem_t *outStruct,
+    virtual IOReturn ReadIO(iomem_t *inStruct, iomem_t *outStruct,
                             IOByteCount inStructSize,
                             IOByteCount *outStructSize);
 
@@ -153,7 +154,7 @@ protected:
                                  IOByteCount inStructSize,
                                  IOByteCount *outStructSize);
 
-	virtual IOReturn WriteIO(iomem_t *inStruct, iomem_t *outStruct,
+    virtual IOReturn WriteIO(iomem_t *inStruct, iomem_t *outStruct,
                              IOByteCount inStructSize,
                              IOByteCount *outStructSize);
 
@@ -162,7 +163,7 @@ protected:
                                   IOByteCount inStructSize,
                                   IOByteCount *outStructSize);
 
-	virtual IOReturn PrepareMap(map_t *inStruct, map_t *outStruct,
+    virtual IOReturn PrepareMap(map_t *inStruct, map_t *outStruct,
                                 IOByteCount inStructSize,
                                 IOByteCount *outStructSize);
 
@@ -171,7 +172,7 @@ protected:
                                      IOByteCount inStructSize,
                                      IOByteCount *outStructSize);
 
-	virtual IOReturn ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
+    virtual IOReturn ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
                              IOByteCount inStructSize,
                              IOByteCount *outStructSize);
 
@@ -179,8 +180,8 @@ protected:
                                   msrcmd_t *inStruct, msrcmd_t *outStruct,
                                   IOByteCount inStructSize,
                                   IOByteCount *outStructSize);
-    
-	virtual IOReturn WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
+
+    virtual IOReturn WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
                               IOByteCount inStructSize,
                               IOByteCount *outStructSize);
 
@@ -189,12 +190,13 @@ protected:
                                    IOByteCount inStructSize,
                                    IOByteCount *outStructSize);
 
+
 private:
-	task_t fTask;
+    task_t fTask;
     UInt64 LastMapAddr;
     UInt64 LastMapSize;
 
-	static void MSRHelperFunction(void *data);
+    static void MSRHelperFunction(void *data);
 
     typedef struct {
         msrcmd_t *in;
@@ -202,21 +204,22 @@ private:
         bool Read;
     } MSRHelper;
 
-	static inline void cpuid(uint32_t op1, uint32_t op2, uint32_t *data);
+
+    static inline void cpuid(uint32_t op1, uint32_t op2, uint32_t *data);
 };
 
 extern "C"
 {
-    /* from sys/osfmk/i386/mp.c */
-    extern void mp_rendezvous(void (*setup_func)(void *),
-                              void (*action_func)(void *),
-                              void (*teardown_func)(void *),
-                              void *arg);
+/* from sys/osfmk/i386/mp.c */
+extern void mp_rendezvous(void (*setup_func)(void *),
+                          void (*action_func)(void *),
+                          void (*teardown_func)(void *),
+                          void *arg);
 
-    extern void mp_rendezvous_no_intrs(void (*action_func)(void *),
-                                       void *arg);
+extern void mp_rendezvous_no_intrs(void (*action_func)(void *),
+                                   void *arg);
 
-    extern int cpu_number(void);
+extern int cpu_number(void);
 }
 
 #ifndef INVALID_MSR_LO
