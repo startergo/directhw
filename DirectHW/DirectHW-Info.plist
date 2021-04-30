@@ -3,22 +3,22 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>en_US</string>
+	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>DirectHW</string>
+	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>DirectHW</string>
+	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>KEXT</string>
-	<key>CFBundleSignature</key>
-	<string>DHWK</string>
-	<key>CFBundleVersion</key>
-	<string>$(MODULE_VERSION)</string>
 	<key>CFBundleShortVersionString</key>
+	<string>$(MODULE_VERSION)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
 	<string>$(MODULE_VERSION)</string>
 	<key>IOKitPersonalities</key>
 	<dict>
@@ -38,19 +38,21 @@
 			<string>DirectHWUserClient</string>
 		</dict>
 	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2008-2010 coresystems GmbH &lt;info@coresystems.de&gt;. All rights reserved.</string>
+	<key>OSBundleCompatibleVersion</key>
+	<string>1.0</string>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>com.apple.kpi.iokit</key>
-		<string>8.0.0d0</string>
+		<string>12.0.0</string>
 		<key>com.apple.kpi.libkern</key>
-		<string>8.0.0d0</string>
+		<string>12.0.0</string>
 		<key>com.apple.kpi.mach</key>
-		<string>8.0.0d0</string>
+		<string>12.0.0</string>
 		<key>com.apple.kpi.unsupported</key>
-		<string>8.0.0b1</string>
+		<string>12.0.0</string>
 	</dict>
-	<key>OSBundleCompatibleVersion</key>
-	<string>$(DYLIB_COMPATIBILITY_VERSION)</string>
 	<key>OSBundleRequied</key>
 	<string>Root</string>
 </dict>
