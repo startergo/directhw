@@ -58,6 +58,8 @@ enum
     kPrepareMap,
     kReadMSR,
     kWriteMSR,
+    kReadCpuID,
+    kReadMem,
     kNumberOfMethods
 };
 
@@ -103,6 +105,18 @@ typedef struct {
     } val;
 } msrcmd_t;
 
+typedef struct {
+    uint32_t core;
+    uint32_t eax;
+    uint32_t ecx;
+    uint32_t cpudata[4];
+} cpuid_t;
+
+typedef struct {
+    uint32_t core;
+    uint64_t addr;
+    uint32_t data;
+} readmem_t;
 
 static io_connect_t connect = -1;
 static io_service_t iokit_uc;
@@ -155,7 +169,7 @@ static void darwin_cleanup(void)
     IOServiceClose(connect);
 }
 
-static int darwin_ioread(int pos, unsigned char *buf, int len)
+int darwin_ioread(int pos, unsigned char * buf, int len)
 {
 
     kern_return_t err;
@@ -445,6 +459,64 @@ msr_t rdmsr(int addr)
     return ret;
 }
 
+int rdcpuid(uint32_t eax, uint32_t ecx, uint32_t cpudata[4])
+{
+    kern_return_t err;
+    size_t dataInLen = sizeof(cpuid_t);
+    size_t dataOutLen = sizeof(cpuid_t);
+    cpuid_t in, out;
+
+    in.core = current_logical_cpu;
+    in.eax = eax;
+    in.ecx = ecx;
+
+#if !defined(__LP64__) && defined(WANT_OLD_API)
+    /* Check if OSX 10.5 API is available */
+    if (IOConnectCallStructMethod != NULL) {
+#endif
+        err = IOConnectCallStructMethod(connect, kReadCpuID, &in, dataInLen, &out, &dataOutLen);
+#if !defined(__LP64__) && defined(WANT_OLD_API)
+    } else {
+        /* Use old API */
+        err = IOConnectMethodStructureIStructureO(connect, kReadCpuID, dataInLen, &dataOutLen, &in, &out);
+    }
+    #endif
+
+    if (err != KERN_SUCCESS)
+        return -1;
+
+    memcpy(cpudata, out.cpudata, sizeof(uint32_t) * 4);
+    return 0;
+}
+
+int readmem32(uint64_t addr, uint32_t* data)
+{
+    kern_return_t err;
+    size_t dataInLen = sizeof(readmem_t);
+    size_t dataOutLen = sizeof(readmem_t);
+    readmem_t in, out;
+
+    in.core = current_logical_cpu;
+    in.addr = addr;
+
+#if !defined(__LP64__) && defined(WANT_OLD_API)
+    /* Check if OSX 10.5 API is available */
+    if (IOConnectCallStructMethod != NULL) {
+#endif
+        err = IOConnectCallStructMethod(connect, kReadMem, &in, dataInLen, &out, &dataOutLen);
+#if !defined(__LP64__) && defined(WANT_OLD_API)
+    } else {
+        /* Use old API */
+        err = IOConnectMethodStructureIStructureO(connect, kReadMem, dataInLen, &dataOutLen, &in, &out);
+    }
+#endif
+
+    if (err != KERN_SUCCESS)
+        return -1;
+
+    *data = out.data;
+    return 0;
+}
 
 int wrmsr(int addr, msr_t msr)
 {
