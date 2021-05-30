@@ -37,6 +37,7 @@ void outl(unsigned int val, unsigned short addr);
 void outq(unsigned long val, unsigned short addr);
 #endif
 
+int readmem32(uint64_t addr, uint32_t* data);
 
 void *map_physical(uint64_t phys_addr, size_t len);
 void unmap_physical(void *virt_addr, size_t len);
@@ -59,6 +60,8 @@ msr_t rdmsr(int addr);
 
 int wrmsr(int addr, msr_t msr);
 int logical_cpu_select(int cpu);
+int rdcpuid(uint32_t eax, uint32_t ecx, uint32_t cpudata[4]);
+int darwin_ioread(int pos, unsigned char * buf, int len);
 
 #ifndef INVALID_MSR_LO
 #define INVALID_MSR_LO 0x63744857
