@@ -16,24 +16,87 @@
  */
 
 #include "DirectHW.hpp"
+#include <IOKit/pci/IOPCIBridge.h>
 
-#undef DEBUG_KEXT
+#if defined(__i386__) || defined(__x86_64__)
+    #if 0
+        #include <architecture/i386/pio.h>
+    #else
+        typedef unsigned short i386_ioport_t;
+        #if defined(__GNUC__)
+            static __inline__ UInt32 inl (i386_ioport_t port) { UInt32 datum;   __asm__ volatile("inl  %w1,  %0" :  "=a" (datum) : "Nd" (port)); return(datum); }
+            static __inline__ UInt16 inw (i386_ioport_t port) { UInt16 datum;   __asm__ volatile("inw  %w1, %w0" :  "=a" (datum) : "Nd" (port)); return(datum); }
+            static __inline__ UInt8  inb (i386_ioport_t port) { UInt8  datum;   __asm__ volatile("inb  %w1, %b0" :  "=a" (datum) : "Nd" (port)); return(datum); }
+            static __inline__ void   outl(i386_ioport_t port,   UInt32 datum) { __asm__ volatile("outl  %0, %w1" : : "a" (datum) , "Nd" (port)); }
+            static __inline__ void   outw(i386_ioport_t port,   UInt16 datum) { __asm__ volatile("outw %w0, %w1" : : "a" (datum) , "Nd" (port)); }
+            static __inline__ void   outb(i386_ioport_t port,   UInt8  datum) { __asm__ volatile("outb %b0, %w1" : : "a" (datum) , "Nd" (port)); }
+        #endif
+    #endif
+#endif
+
+//This is defined in the compiler flags for the debug target.
+//#undef DEBUG_KEXT
 //#define DEBUG_KEXT
 
-#ifndef super
+#undef  super
 #define super IOService
-#endif /* super */
+
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_5
+    #define kIOMemoryMapperNone kIOMemoryDontMap
+#endif
+
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
+    #define kIOUCVariableStructureSize -1
+    #define getAddress getVirtualAddress
+#endif
+
+extern "C"
+{
+    /* from sys/osfmk/i386/mp.c */
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_5
+    #if defined(__i386__) || defined(__x86_64__)
+        extern void mp_rendezvous(void (*setup_func)(void *),
+                                  void (*action_func)(void *),
+                                  void (*teardown_func)(void *),
+                                  void *arg);
+    #else
+        static void mp_rendezvous(void (*setup_func)(void *),
+                                  void (*action_func)(void *),
+                                  void (*teardown_func)(void *),
+                                  void *arg)
+        {
+            ((void)setup_func);
+            ((void)teardown_func);
+            action_func(arg);
+        }
+    #endif
+
+    #define mp_rendezvous_no_intrs(x, y) mp_rendezvous(NULL, x, NULL, y)
+
+    #define cpu_number() (0)
+
+#else
+        extern void mp_rendezvous(void (*setup_func)(void *),
+                                  void (*action_func)(void *),
+                                  void (*teardown_func)(void *),
+                                  void *arg);
+
+        extern void mp_rendezvous_no_intrs(void (*action_func)(void *),
+                                           void *arg) /* __attribute__((weak_import)) */;
+
+        extern int cpu_number(void) /* __attribute__((weak_import)) */ ;
+#endif
+}
 
 OSDefineMetaClassAndStructors(DirectHWService, IOService)
 
 bool DirectHWService::start(IOService * provider)
 {
-    IOLog("DirectHW: Driver v%s (compiled on %s) loaded.\nVisit http://www.coresystems.de/ for more information.\n", DIRECTHW_VERSION, __DATE__);
+    IOLog("DirectHW: Driver v%s (compiled on %s) loaded.\n", DIRECTHW_VERSION, __DATE__);
+    IOLog("Visit http://www.coresystems.de/ for more information.\n");
 
-    if (super::start(provider))
-    {
+    if (super::start(provider)) {
         registerService();
-
         return true;
     }
 
@@ -45,62 +108,76 @@ bool DirectHWService::start(IOService * provider)
 
 OSDefineMetaClassAndStructors(DirectHWUserClient, IOUserClient)
 
-const IOExternalAsyncMethod DirectHWUserClient::fAsyncMethods[kNumberOfMethods] =
-{
-    {0, (IOAsyncMethod) & DirectHWUserClient::ReadIOAsync, kIOUCStructIStructO, sizeof(iomem_t), sizeof(iomem_t)},
-    {0, (IOAsyncMethod) & DirectHWUserClient::WriteIOAsync, kIOUCStructIStructO, sizeof(iomem_t), sizeof(iomem_t)},
-    {0, (IOAsyncMethod) & DirectHWUserClient::PrepareMapAsync, kIOUCStructIStructO, sizeof(map_t), sizeof(map_t)},
+const IOExternalAsyncMethod DirectHWUserClient::fAsyncMethods[kNumberOfMethods] = {
+    {0, (IOAsyncMethod) & DirectHWUserClient::ReadIOAsync, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
+    {0, (IOAsyncMethod) & DirectHWUserClient::WriteIOAsync, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
+    {0, (IOAsyncMethod) & DirectHWUserClient::PrepareMapAsync, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
     {0, (IOAsyncMethod) & DirectHWUserClient::ReadMSRAsync, kIOUCStructIStructO, sizeof(msrcmd_t), sizeof(msrcmd_t)},
-    {0, (IOAsyncMethod) & DirectHWUserClient::WriteMSRAsync, kIOUCStructIStructO, sizeof(msrcmd_t), sizeof(msrcmd_t)}
+    {0, (IOAsyncMethod) & DirectHWUserClient::WriteMSRAsync, kIOUCStructIStructO, sizeof(msrcmd_t), sizeof(msrcmd_t)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::ReadCpuIdAsync, kIOUCStructIStructO, sizeof(cpuid_t), sizeof(cpuid_t)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::ReadMemAsync, kIOUCStructIStructO, sizeof(readmem_t), sizeof(readmem_t)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::ReadAsync, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::WriteAsync, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
 };
 
-const IOExternalMethod DirectHWUserClient::fMethods[kNumberOfMethods] =
-{
-    {0, (IOMethod) & DirectHWUserClient::ReadIO, kIOUCStructIStructO, sizeof(iomem_t), sizeof(iomem_t)},
-    {0, (IOMethod) & DirectHWUserClient::WriteIO, kIOUCStructIStructO, sizeof(iomem_t), sizeof(iomem_t)},
-    {0, (IOMethod) & DirectHWUserClient::PrepareMap, kIOUCStructIStructO, sizeof(map_t), sizeof(map_t)},
+const IOExternalMethod DirectHWUserClient::fMethods[kNumberOfMethods] = {
+    {0, (IOMethod) & DirectHWUserClient::ReadIO, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
+    {0, (IOMethod) & DirectHWUserClient::WriteIO, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
+    {0, (IOMethod) & DirectHWUserClient::PrepareMap, kIOUCStructIStructO, kIOUCVariableStructureSize, kIOUCVariableStructureSize},
     {0, (IOMethod) & DirectHWUserClient::ReadMSR, kIOUCStructIStructO, sizeof(msrcmd_t), sizeof(msrcmd_t)},
     {0, (IOMethod) & DirectHWUserClient::WriteMSR, kIOUCStructIStructO, sizeof(msrcmd_t), sizeof(msrcmd_t)},
     {0, (IOMethod) & DirectHWUserClient::ReadCpuId, kIOUCStructIStructO, sizeof(cpuid_t), sizeof(cpuid_t)},
- 	{0, (IOMethod) & DirectHWUserClient::ReadMem, kIOUCStructIStructO, sizeof(readmem_t), sizeof(readmem_t)}
+    {0, (IOMethod) & DirectHWUserClient::ReadMem, kIOUCStructIStructO, sizeof(readmem_t), sizeof(readmem_t)},
+    {0, (IOMethod) & DirectHWUserClient::Read, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
+    {0, (IOMethod) & DirectHWUserClient::Write, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
 };
 
-bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type)
+bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type, OSDictionary* properties)
 {
     bool ret;
 
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: initWithTask(%p, %p, %lx)\n", (void *)task, (void *)securityID, (unsigned long)type);
+    #endif
+
+    if (kIOReturnSuccess != clientHasPrivilege(securityID, kIOClientPrivilegeAdministrator)) {
+        IOLog("DirectHW: Requires administrator.\n");
+        return (false);
+    }
+
     ret = super::initWithTask(task, securityID, type);
-
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: initWithTask(%p, %p, %16lx)\n", (void *)task, (void *)securityID, (unsigned long)type);
-#endif /* DEBUG_KEXT */
-
-    if (ret == false)
-    {
+    if (ret == false) {
         IOLog("DirectHW: initWithTask failed.\n");
-
         return ret;
     }
 
-    fTask = task;
+    fCrossEndian = false;
 
+    if (properties != NULL && properties->getObject(kIOUserClientCrossEndianKey)) {
+        // A connection to this user client is being opened by a user process running using Rosetta.
+        
+        // Indicate that this user client can handle being called from cross-endian user processes by 
+        // setting its IOUserClientCrossEndianCompatible property in the I/O Registry.
+        if (setProperty(kIOUserClientCrossEndianCompatibleKey, kOSBooleanTrue)) {
+            fCrossEndian = true;
+            IOLog("DirectHW: fCrossEndian = true\n");
+        }
+    }
+
+    fTask = task;
     return ret;
 }
 
 IOExternalAsyncMethod *DirectHWUserClient::getAsyncTargetAndMethodForIndex(IOService ** target, UInt32 index)
 {
-    if (target == NULL)
-    {
+    if (target == NULL) {
         return NULL;
     }
 
-    if (index < (UInt32) kNumberOfMethods)
-    {
-        if (fAsyncMethods[index].object == (IOService *) 0)
-        {
+    if (index < (UInt32) kNumberOfMethods) {
+        if (fAsyncMethods[index].object == (IOService *) 0) {
             *target = this;
         }
-
         return (IOExternalAsyncMethod *) & fAsyncMethods[index];
     }
 
@@ -110,15 +187,12 @@ IOExternalAsyncMethod *DirectHWUserClient::getAsyncTargetAndMethodForIndex(IOSer
 
 IOExternalMethod *DirectHWUserClient::getTargetAndMethodForIndex(IOService ** target, UInt32 index)
 {
-    if (target == NULL)
-    {
+    if (target == NULL) {
         return NULL;
     }
 
-    if (index < (UInt32) kNumberOfMethods)
-    {
-        if (fMethods[index].object == (IOService *) 0)
-        {
+    if (index < (UInt32) kNumberOfMethods) {
+        if (fMethods[index].object == (IOService *) 0) {
             *target = this;
         }
 
@@ -133,64 +207,66 @@ bool DirectHWUserClient::start(IOService * provider)
 {
     bool success;
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Starting DirectHWUserClient\n");
-#endif
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: Starting DirectHWUserClient.\n");
+    #endif
 
     fProvider = OSDynamicCast(DirectHWService, provider);
     success = (fProvider != NULL);
 
-    if (kIOReturnSuccess != clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)) {
-        IOLog("DirectHW: Need to be administrator.\n");
-        success = false;
+    if (success) {
+        success = super::start(provider);
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Client successfully started.\n");
+        #endif
+    }
+    else {
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Could not start client.\n");
+        #endif
     }
 
-    if (success)
-    {
-        success = super::start(provider);
-#ifdef DEBUG_KEXT
-        IOLog("DirectHW: Client successfully started.\n");
-    } else {
-        IOLog("DirectHW: Could not start client.\n");
+#if 0
+    #if (defined(__i386__) || defined(__x86_64__))
+        uint32_t cr0, cr2, cr3;
+        #ifdef __x86_64__
+            __asm__ __volatile__ (
+                "mov %%cr0, %%rax\n"
+                "mov %%eax, %0\n"
+                "mov %%cr2, %%rax\n"
+                "mov %%eax, %1\n"
+                "mov %%cr3, %%rax\n"
+                "mov %%eax, %2\n"
+                : "=m" (cr0), "=m" (cr2), "=m" (cr3)
+                : /* no input */
+                : "%rax"
+            );
+        #elif defined(__i386__)
+            __asm__ __volatile__ (
+                "mov %%cr0, %%eax\n"
+                "mov %%eax, %0\n"
+                "mov %%cr2, %%eax\n"
+                "mov %%eax, %1\n"
+                "mov %%cr3, %%eax\n"
+                "mov %%eax, %2\n"
+                : "=m" (cr0), "=m" (cr2), "=m" (cr3)
+                : /* no input */
+                : "%eax"
+            );
+        #endif
+        IOLog("DirectHW: cr0 = 0x%8.8X\n", cr0);
+        IOLog("DirectHW: cr2 = 0x%8.8X\n", cr2);
+        IOLog("DirectHW: cr3 = 0x%8.8X\n", cr3);
+    #endif
 #endif
-    }
-    uint32_t cr0, cr2, cr3;
-#ifdef __x86_64__
-    __asm__ __volatile__ (
-        "mov %%cr0, %%rax\n\t"
-        "mov %%eax, %0\n\t"
-        "mov %%cr2, %%rax\n\t"
-        "mov %%eax, %1\n\t"
-        "mov %%cr3, %%rax\n\t"
-        "mov %%eax, %2\n\t"
-        : "=m" (cr0), "=m" (cr2), "=m" (cr3)
-        : /* no input */
-        : "%rax"
-    );
-#elif defined(__i386__)
-    __asm__ __volatile__ (
-        "mov %%cr0, %%eax\n\t"
-        "mov %%eax, %0\n\t"
-        "mov %%cr2, %%eax\n\t"
-        "mov %%eax, %1\n\t"
-        "mov %%cr3, %%eax\n\t"
-        "mov %%eax, %2\n\t"
-        : "=m" (cr0), "=m" (cr2), "=m" (cr3)
-        : /* no input */
-        : "%eax"
-    );
-#endif
-    IOLog("DirectHW: cr0 = 0x%8.8X\n", cr0);
-    IOLog("DirectHW: cr2 = 0x%8.8X\n", cr2);
-    IOLog("DirectHW: cr3 = 0x%8.8X\n", cr3);
     return success;
 }
 
 void DirectHWUserClient::stop(IOService *provider)
 {
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Stopping client.\n");
-#endif
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: Stopping client.\n");
+    #endif
 
     super::stop(provider);
 }
@@ -200,10 +276,11 @@ IOReturn DirectHWUserClient::clientClose(void)
     bool success = terminate();
     if (!success) {
         IOLog("DirectHW: Client NOT successfully closed.\n");
-#ifdef DEBUG_KEXT
-    } else {
-        IOLog("DirectHW: Client successfully closed.\n");
-#endif
+    }
+    else {
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Client successfully closed.\n");
+        #endif
     }
 
     return kIOReturnSuccess;
@@ -216,8 +293,7 @@ DirectHWUserClient::ReadIOAsync(OSAsyncReference asyncRef,
                                 IOByteCount *outStructSize)
 {
     ((void)asyncRef);
-
-    return DirectHWUserClient::ReadIO(inStruct, outStruct, inStructSize, outStructSize);
+    return ReadIO(inStruct, outStruct, inStructSize, outStructSize);
 }
 
 IOReturn
@@ -225,48 +301,98 @@ DirectHWUserClient::ReadIO(iomem_t *inStruct, iomem_t *outStruct,
                            IOByteCount inStructSize,
                            IOByteCount *outStructSize)
 {
-    ((void)inStructSize);
+#if defined(__i386__) || defined(__x86_64__)
+    if (
+        (inStructSize != sizeof(iomem_t) && inStructSize != sizeof(iomem64_t))
+        || !outStructSize
+        || *outStructSize != inStructSize
+    ) {
+        return kIOReturnBadArgument;
+    }
 
-    if ((fProvider == NULL) || (isInactive()))
-    {
+    if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
     }
 
-    switch (inStruct->width)
-    {
-        case 1:
-            outStruct->data = inb(inStruct->offset);
-            break;
+    if (inStructSize == sizeof(iomem_t)) {
+        if (fCrossEndian) {
+            inStruct->offset = OSSwapInt32(inStruct->offset);
+            inStruct->width = OSSwapInt32(inStruct->width);
+        }
 
-        case 2:
-            outStruct->data = inw(inStruct->offset);
-            break;
+        outStruct->data = 0;
+        switch (inStruct->width) {
+            case 1: *(UInt8*)(&outStruct->data) = inb(inStruct->offset); break;
+            case 2: *(UInt16*)(&outStruct->data) = inw(inStruct->offset); break;
+            case 4: {
+                        UInt64 val = inl(inStruct->offset);
+                        *(UInt32*)(&outStruct->data) = (UInt32)val;
+                    } break;
+            default:
+                IOLog("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
+                      (long)inStruct->width, (unsigned long)inStruct->offset);
+                return kIOReturnBadArgument;
+        }
 
-        case 4:
-            outStruct->data = inl(inStruct->offset);
-            break;
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
+                  (unsigned long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)outStruct->data);
+        #endif
 
-#ifdef __LP64__
-        case 8:
-            outStruct->data = (UInt64)inl(inStruct->offset);
-            outStruct->data = ((UInt64)inl(inStruct->offset) << 32);
+        if (fCrossEndian) {
+            switch (inStruct->width) {
+                case 2: *(UInt16*)(&outStruct->data) = OSSwapInt16(*(UInt16*)(&outStruct->data)); break;
+                case 4: *(UInt32*)(&outStruct->data) = OSSwapInt32(*(UInt32*)(&outStruct->data)); break;
+            }
+        }
+    }
+    else {
+        iomem64_t *inStruct64 = (iomem64_t*)inStruct;
+        iomem64_t *outStruct64 = (iomem64_t*)outStruct;
+
+        if (fCrossEndian) {
+            inStruct64->offset = OSSwapInt64(inStruct64->offset);
+            inStruct64->width = OSSwapInt64(inStruct64->width);
+        }
+
+        switch (inStruct64->width) {
+            case 1: *(UInt8*)(&outStruct64->data) = inb(inStruct64->offset); break;
+            case 2: *(UInt16*)(&outStruct64->data) = inw(inStruct64->offset); break;
+            case 4: {
+                        UInt64 val = inl((i386_ioport_t)inStruct64->offset);
+                        *(UInt32*)(&outStruct64->data) = (UInt32)val;
+                    } break;
+            case 8: {
+                        UInt64 val = inl((i386_ioport_t)inStruct64->offset);
+                        UInt64 val2 = inl((i386_ioport_t)inStruct64->offset + 4);
+                        *(UInt64*)(&outStruct64->data) = (UInt64)(val) | ((UInt64)(val2) << 32);
+                    } break;
+            default:
+                IOLog("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
+                      (long)inStruct64->width, (unsigned long)inStruct64->offset);
+                return kIOReturnBadArgument;
+        }
+        
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
+                  (unsigned long)inStruct64->width, (unsigned long)inStruct64->offset, (unsigned long)outStruct64->data);
+        #endif
+
+        if (fCrossEndian) {
+            switch (inStruct64->width) {
+                case 2: *(UInt16*)(&outStruct64->data) = OSSwapInt16(*(UInt16*)(&outStruct64->data)); break;
+                case 4: *(UInt32*)(&outStruct64->data) = OSSwapInt32(*(UInt32*)(&outStruct64->data)); break;
+                case 8: *(UInt64*)(&outStruct64->data) = OSSwapInt64(*(UInt64*)(&outStruct64->data)); break;
+            }
+        }
+    }
+#else
+    ((void)inStruct);
+    ((void)outStruct);
+    ((void)inStructSize);
+    ((void)outStructSize);
+    return kIOReturnBadArgument;
 #endif
-
-        default:
-            IOLog("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
-                  (long)inStruct->width, (unsigned long)inStruct->offset);
-            break;
-    }
-
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
-          (unsigned long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)outStruct->data);
-#endif /* DEBUG_KEXT */
-
-    if (outStructSize != NULL)
-    {
-        *outStructSize = sizeof(iomem_t);
-    }
 
     return kIOReturnSuccess;
 }
@@ -277,8 +403,7 @@ DirectHWUserClient::WriteIOAsync(OSAsyncReference asyncRef, iomem_t *inStruct, i
                                  IOByteCount *outStructSize)
 {
     ((void)asyncRef);
-
-    return DirectHWUserClient::WriteIO(inStruct, outStruct, inStructSize, outStructSize);
+    return WriteIO(inStruct, outStruct, inStructSize, outStructSize);
 }
 
 IOReturn
@@ -286,51 +411,92 @@ DirectHWUserClient::WriteIO(iomem_t *inStruct, iomem_t *outStruct,
                             IOByteCount inStructSize,
                             IOByteCount *outStructSize)
 {
-#ifndef DEBUG_KEXT
-    ((void)inStruct);
-#endif /* DEBUG_KEXT */
     ((void)outStruct);
-    ((void)inStructSize);
 
-    if ((fProvider == NULL) || (isInactive()))
-    {
+#if defined(__i386__) || defined(__x86_64__)
+    if (
+        (inStructSize != sizeof(iomem_t) && inStructSize != sizeof(iomem64_t))
+        || !outStructSize
+        || *outStructSize != inStructSize
+    ) {
+        return kIOReturnBadArgument;
+    }
+
+    if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
     }
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
-          (long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)inStruct->data);
-#endif /* DEBUG_KEXT */
+    if (inStructSize == sizeof(iomem_t)) {
+        if (fCrossEndian) {
+            inStruct->offset = OSSwapInt32(inStruct->offset);
+            inStruct->width = OSSwapInt32(inStruct->width);
+            switch (inStruct->width) {
+                case 2: *(UInt16*)(&inStruct->data) = OSSwapInt16(*(UInt16*)(&inStruct->data)); break;
+                case 4: *(UInt32*)(&inStruct->data) = OSSwapInt32(*(UInt32*)(&inStruct->data)); break;
+            }
+        }
 
-    switch (inStruct->width)
-    {
-        case 1:
-            outb(inStruct->offset, (unsigned char)inStruct->data);
-            break;
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
+                  (long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)inStruct->data);
+        #endif
 
-        case 2:
-            outw(inStruct->offset, (unsigned short)inStruct->data);
-            break;
+        switch (inStruct->width) {
+            case 1: outb(inStruct->offset, *(UInt8*)(&inStruct->data)); break;
+            case 2: outw(inStruct->offset, *(UInt16*)(&inStruct->data)); break;
+            case 4: {
+                        unsigned int val = (unsigned int)inStruct->data;
+                        outl(inStruct->offset, val);
+                    } break;
+            default:
+                IOLog("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
+                      (long)inStruct->width, (unsigned long)inStruct->offset);
+                return kIOReturnBadArgument;
+        }
+    }
+    else {
+        iomem64_t *inStruct64 = (iomem64_t*)inStruct;
 
-        case 4:
-            outl(inStruct->offset, (unsigned int)inStruct->data);
-            break;
+        if (fCrossEndian) {
+            inStruct64->offset = OSSwapInt64(inStruct64->offset);
+            inStruct64->width = OSSwapInt64(inStruct64->width);
+            switch (inStruct64->width) {
+                case 2: *(UInt16*)(&inStruct64->data) = OSSwapInt16(*(UInt16*)(&inStruct64->data)); break;
+                case 4: *(UInt32*)(&inStruct64->data) = OSSwapInt32(*(UInt32*)(&inStruct64->data)); break;
+                case 8: *(UInt64*)(&inStruct64->data) = OSSwapInt64(*(UInt64*)(&inStruct64->data)); break;
+            }
+        }
 
-#ifdef __LP64__
-        case 8:
-            outl(inStruct->offset, (unsigned int)inStruct->data & 0xFFFFFFFF);
-            outl(inStruct->offset, (unsigned int)((inStruct->data & 0xFFFFFFFF00000000) >> 32));
+        #ifdef DEBUG_KEXT
+            IOLog("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
+                  (long)inStruct64->width, (unsigned long)inStruct64->offset, (unsigned long)inStruct64->data);
+        #endif
+
+        switch (inStruct64->width) {
+            case 1: outb(inStruct64->offset, (unsigned char)inStruct64->data); break;
+            case 2: outw(inStruct64->offset, (unsigned short)inStruct64->data); break;
+            case 4: {
+                        unsigned int val = (unsigned int)inStruct64->data;
+                        outl(inStruct64->offset, val);
+                    } break;
+            case 8: {
+                        unsigned int val = (unsigned int)((UInt32)inStruct64->data);
+                        unsigned int val2 = (unsigned int)(inStruct64->data >> 32);
+                        outl(inStruct64->offset, val);
+                        outl(inStruct64->offset + 4, val2);
+                    } break;
+            default:
+                IOLog("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
+                      (long)inStruct64->width, (unsigned long)inStruct64->offset);
+                return kIOReturnBadArgument;
+        }
+    }
+#else
+    ((void)inStruct);
+    ((void)inStructSize);
+    ((void)outStructSize);
+    return kIOReturnBadArgument;
 #endif
-
-        default:
-            IOLog("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
-                  (long)inStruct->width, (unsigned long)inStruct->offset);
-    }
-
-    if (outStructSize != NULL)
-    {
-        *outStructSize = sizeof(iomem_t);
-    }
 
     return kIOReturnSuccess;
 }
@@ -342,7 +508,6 @@ DirectHWUserClient::PrepareMapAsync(OSAsyncReference asyncRef,
                                     IOByteCount *outStructSize)
 {
     ((void)asyncRef);
-
     return PrepareMap(inStruct, outStruct, inStructSize, outStructSize);
 }
 
@@ -351,30 +516,46 @@ DirectHWUserClient::PrepareMap(map_t *inStruct, map_t *outStruct,
                                IOByteCount inStructSize,
                                IOByteCount *outStructSize)
 {
+    if (
+        (inStructSize != sizeof(map_t) && inStructSize != sizeof(map32_t))
+        || !outStructSize
+        || *outStructSize != inStructSize
+    ) {
+        return kIOReturnBadArgument;
+    }
+
     ((void)outStruct);
     ((void)inStructSize);
 
-    if ((fProvider == NULL) || (isInactive()))
-    {
+    if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
     }
 
-    if ((LastMapAddr != 0) || (LastMapSize != 0))
-    {
+    if ((LastMapAddr != 0) || (LastMapSize != 0)) {
         return kIOReturnNotOpen;
     }
 
-    LastMapAddr = inStruct->addr;
-    LastMapSize = inStruct->size;
-
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: PrepareMap 0x%16lx[0x%lx]\n", (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
-#endif /* DEBUG_KEXT */
-
-    if (outStructSize != NULL)
-    {
-        *outStructSize = sizeof(map_t);
+    if (inStructSize == sizeof(map_t)) {
+        if (fCrossEndian) {
+            inStruct->addr = OSSwapInt64(inStruct->addr);
+            inStruct->size = OSSwapInt64(inStruct->size);
+        }
+        LastMapAddr = inStruct->addr;
+        LastMapSize = inStruct->size;
     }
+    else {
+        map32_t *inStruct32 = (map32_t *)inStruct;
+        if (fCrossEndian) {
+            inStruct32->addr = OSSwapInt32(inStruct32->addr);
+            inStruct32->size = OSSwapInt32(inStruct32->size);
+        }
+        LastMapAddr = inStruct32->addr;
+        LastMapSize = inStruct32->size;
+    }
+
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: PrepareMap 0x%16lx[0x%lx]\n", (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
+    #endif
 
     return kIOReturnSuccess;
 }
@@ -382,6 +563,7 @@ DirectHWUserClient::PrepareMap(map_t *inStruct, map_t *outStruct,
 inline void
 DirectHWUserClient::cpuid(uint32_t op1, uint32_t op2, uint32_t *data)
 {
+#if defined(__i386__) || defined(__x86_64__)
     asm("cpuid"
         : "=a" (data[0]),
         "=b" (data[1]),
@@ -389,6 +571,11 @@ DirectHWUserClient::cpuid(uint32_t op1, uint32_t op2, uint32_t *data)
         "=d" (data[3])
         : "a"(op1),
         "c"(op2));
+#else
+    ((void)op1);
+    ((void)op2);
+    data[0] = data[1] = data[2] = data[3] = 0;
+#endif
 }
 
 static inline uint64_t
@@ -396,29 +583,39 @@ rdmsr64(uint32_t msr)
 {
     uint32_t lo = 0;
     uint32_t hi = 0;
-    uint64_t val = 0;
+    uint64_t val;
 
+#if defined(__i386__) || defined(__x86_64__)
     rdmsr(msr, lo, hi);
+#else
+    ((void)msr);
+#endif
 
     val = (((uint64_t)hi) << 32) | ((uint64_t)lo);
 
-#ifdef DEBUG_KEXT
-    printf("rdmsr64(0x%.16lX) => %.16llX\n", (unsigned long)msr, (unsigned long long)val);
-#endif /* DEBUG_KEXT */
+    #ifdef DEBUG_KEXT
+        IOLog("rdmsr64(0x%.16lX) => %.16llX\n", (unsigned long)msr, (unsigned long long)val);
+    #endif
 
     return val;
 }
 
 static inline void wrmsr64(UInt32 msr, UInt64 val)
 {
-    UInt32 lo = ((UInt32)(val & 0xFFFFFFFF));
-    UInt32 hi = ((UInt32)((val & 0xFFFFFFFF00000000) >> 32));
+    UInt32 lo = (UInt32)val;
+    UInt32 hi = (UInt32)(val >> 32);
 
-#ifdef DEBUG_KEXT
-    printf("wrmsr64(0x%.16lX, %.16llX)\n", (unsigned long)msr, (unsigned long long)val);
-#endif /* DEBUG_KEXT */
+    #ifdef DEBUG_KEXT
+        IOLog("wrmsr64(0x%.16lX, %.16llX)\n", (unsigned long)msr, (unsigned long long)val);
+    #endif
 
+#if defined(__i386__) || defined(__x86_64__)
     wrmsr(msr, lo, hi);
+#else
+    ((void)msr);
+    ((void)lo);
+    ((void)hi);
+#endif
 }
 
 void
@@ -428,7 +625,7 @@ DirectHWUserClient::CPUIDHelperFunction(void *data)
     cpuData->out->core = -1;
     if (cpuData->in->core != cpu_number())
         return;
-    cpuid(cpuData->in->eax, cpuData->in->ecx, cpuData->out->output);
+    cpuid(cpuData->in->eax, cpuData->in->ecx, cpuData->out->cpudata);
     cpuData->out->eax = cpuData->in->eax;
     cpuData->out->ecx = cpuData->in->ecx;
     cpuData->out->core = cpuData->in->core;
@@ -442,14 +639,20 @@ DirectHWUserClient::ReadMemHelperFunction(void *data)
     if (memData->in->core != cpu_number())
         return;
     uint32_t out;
-    uint64_t addr;
-    __asm__ ("mov %1,%%eax\t\n"
-        "mov %%eax, %0\t\n"
+#if defined(__i386__) || defined(__x86_64__)
+    uint64_t addr = memData->in->addr;
+    __asm__ __volatile__ (
+        "mov %1,%%eax\n"
+        "mov %%eax, %0\n"
         : "=m" (out)
         : "m" (addr)
         : "%eax"
     );
+#else
+    out = 0;
+#endif
     memData->out->data = out;
+    memData->out->core = memData->in->core;
 }
 
 void
@@ -478,27 +681,25 @@ DirectHWUserClient::MSRHelperFunction(void *data)
 
     // TODO: What we want is this:
     // if (inStruct->core != cpu_to_core(cpu_number()))
-    //	return;
+    //     return;
 
-    if ((core_id & smt_mask) != core_id)
-    {
+    if ((core_id & smt_mask) != core_id) {
         return; // It's a HT thread
     }
 
-    if (inStruct->core != cpu_number())
-    {
+    if (inStruct->core != cpu_number()) {
         return;
     }
 
-    IOLog("DirectHW: ReadMSRHelper %ld %ld %lx \n",
+    IOLog("DirectHW: ReadMSRHelper %ld %ld %lx\n",
           (long)inStruct->core, (long)cpu_number(), (unsigned long)smt_mask);
 
-    if (MSRData->Read)
-    {
+    if (MSRData->Read) {
         uint64_t ret = rdmsr64(inStruct->index);
 
         outStruct->val.io64 = ret;
-    } else {
+    }
+    else {
         wrmsr64(inStruct->index, inStruct->val.io64);
     }
 
@@ -513,8 +714,7 @@ DirectHWUserClient::ReadMSRAsync(OSAsyncReference asyncRef,
                                  IOByteCount *outStructSize)
 {
     ((void)asyncRef);
-
-    return DirectHWUserClient::ReadMSR(inStruct, outStruct, inStructSize, outStructSize);
+    return ReadMSR(inStruct, outStruct, inStructSize, outStructSize);
 }
 
 IOReturn
@@ -524,34 +724,42 @@ DirectHWUserClient::ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
 {
     ((void)inStructSize);
 
-    if ((fProvider == NULL) || (isInactive()))
-    {
+    if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
+    }
+    
+    if (fCrossEndian) {
+        inStruct->core = OSSwapInt32(inStruct->core);
+        inStruct->index = OSSwapInt32(inStruct->index);
+        inStruct->val.io64 = OSSwapInt64(inStruct->val.io64);
     }
 
     MSRHelper MSRData = { inStruct, outStruct, true };
 
-#ifdef USE_MP_RENDEZVOUS
-    mp_rendezvous(NULL, (void (*)(void *))MSRHelperFunction, NULL, (void *)&MSRData);
-#else /* !USE_MP_RENDEZVOUS */
-    mp_rendezvous_no_intrs((void (*)(void *))MSRHelperFunction, (void *)&MSRData);
-#endif /* USE_MP_RENDEZVOUS */
+    #ifdef USE_MP_RENDEZVOUS
+        mp_rendezvous(NULL, (void (*)(void *))MSRHelperFunction, NULL, (void *)&MSRData);
+    #else
+        mp_rendezvous_no_intrs((void (*)(void *))MSRHelperFunction, (void *)&MSRData);
+    #endif
 
-    if (outStructSize != NULL)
-    {
+    if (outStructSize != NULL) {
         *outStructSize = sizeof(msrcmd_t);
     }
 
-    if (outStruct->core != inStruct->core)
-    {
+    if (outStruct->core != inStruct->core) {
         return kIOReturnIOError;
     }
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: ReadMSR(0x%16lx) => 0x%16llx\n",
-          (unsigned long)inStruct->index, (unsigned long long)outStruct->val.io64);
-#endif /* DEBUG_KEXT */
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: ReadMSR(0x%16lx) => 0x%16llx\n",
+              (unsigned long)inStruct->index, (unsigned long long)outStruct->val.io64);
+    #endif
 
+    if (fCrossEndian) {
+        outStruct->core = OSSwapInt32(outStruct->core);
+        outStruct->index = OSSwapInt32(outStruct->index);
+        outStruct->val.io64 = OSSwapInt64(outStruct->val.io64);
+    }
     return kIOReturnSuccess;
 }
 
@@ -562,8 +770,7 @@ DirectHWUserClient::WriteMSRAsync(OSAsyncReference asyncRef,
                                   IOByteCount *outStructSize)
 {
     ((void)asyncRef);
-
-    return DirectHWUserClient::WriteMSR(inStruct, outStruct, inStructSize, outStructSize);
+    return WriteMSR(inStruct, outStruct, inStructSize, outStructSize);
 }
 
 IOReturn
@@ -573,44 +780,70 @@ DirectHWUserClient::WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
 {
     ((void)inStructSize);
 
-    if ((fProvider == NULL) || (isInactive()))
-    {
+    if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
     }
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: WriteMSR(0x%16lx) = 0x%16llx\n",
-          (unsigned long)inStruct->index, (unsigned long long)inStruct->val.io64);
-#endif /* DEBUG_KEXT */
+    if (fCrossEndian) {
+        inStruct->core = OSSwapInt32(inStruct->core);
+        inStruct->index = OSSwapInt32(inStruct->index);
+        inStruct->val.io64 = OSSwapInt64(inStruct->val.io64);
+    }
+
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: WriteMSR(0x%16lx) = 0x%16llx\n",
+              (unsigned long)inStruct->index, (unsigned long long)inStruct->val.io64);
+    #endif
 
     MSRHelper MSRData = { inStruct, outStruct, false };
 
-#ifdef USE_MP_RENDEZVOUS
-    mp_rendezvous(NULL, (void (*)(void *))MSRHelperFunction, NULL, (void *)&MSRData);
-#else /* !USE_MP_RENDEZVOUS */
-    mp_rendezvous_no_intrs((void (*)(void *))MSRHelperFunction, (void *)&MSRData);
-#endif /* USE_MP_RENDEZVOUS */
+    #ifdef USE_MP_RENDEZVOUS
+        mp_rendezvous(NULL, (void (*)(void *))MSRHelperFunction, NULL, (void *)&MSRData);
+    #else
+        mp_rendezvous_no_intrs((void (*)(void *))MSRHelperFunction, (void *)&MSRData);
+    #endif
 
-    if (outStructSize != NULL)
-    {
+    if (outStructSize != NULL) {
         *outStructSize = sizeof(msrcmd_t);
     }
 
-    if (outStruct->core != inStruct->core)
-    {
+    if (outStruct->core != inStruct->core) {
         return kIOReturnIOError;
     }
 
+    if (fCrossEndian) {
+        outStruct->core = OSSwapInt32(outStruct->core);
+        outStruct->index = OSSwapInt32(outStruct->index);
+        outStruct->val.io64 = OSSwapInt64(outStruct->val.io64);
+    }
     return kIOReturnSuccess;
 }
 
 IOReturn
-DirectHWUserClient::ReadCpuId(cpuid_t * inStruct, cpuid_t * outStruct,
-                            IOByteCount inStructSize,
-                            IOByteCount * outStructSize)
+DirectHWUserClient::ReadCpuIdAsync(OSAsyncReference asyncRef,
+                                   cpuid_t * inStruct, cpuid_t * outStruct,
+                                   IOByteCount inStructSize,
+                                   IOByteCount * outStructSize)
 {
+    ((void)asyncRef);
+    return ReadCpuId(inStruct, outStruct, inStructSize, outStructSize);
+}
+
+IOReturn
+DirectHWUserClient::ReadCpuId(cpuid_t * inStruct, cpuid_t * outStruct,
+                              IOByteCount inStructSize,
+                              IOByteCount * outStructSize)
+{
+    ((void)inStructSize);
+
     if (fProvider == NULL || isInactive()) {
         return kIOReturnNotAttached;
+    }
+
+    if (fCrossEndian) {
+        inStruct->core = OSSwapInt32(inStruct->core);
+        inStruct->eax = OSSwapInt32(inStruct->eax);
+        inStruct->ecx = OSSwapInt32(inStruct->ecx);
     }
 
     CPUIDHelper cpuidData = { inStruct, outStruct};
@@ -622,7 +855,26 @@ DirectHWUserClient::ReadCpuId(cpuid_t * inStruct, cpuid_t * outStruct,
     if (outStruct->core != inStruct->core)
         return kIOReturnIOError;
 
+    if (fCrossEndian) {
+        outStruct->core = OSSwapInt32(outStruct->core);
+        outStruct->eax = OSSwapInt32(outStruct->eax);
+        outStruct->ecx = OSSwapInt32(outStruct->ecx);
+        outStruct->cpudata[0] = OSSwapInt32(outStruct->cpudata[0]);
+        outStruct->cpudata[1] = OSSwapInt32(outStruct->cpudata[1]);
+        outStruct->cpudata[2] = OSSwapInt32(outStruct->cpudata[2]);
+        outStruct->cpudata[3] = OSSwapInt32(outStruct->cpudata[3]);
+    }
     return kIOReturnSuccess;
+}
+
+IOReturn
+DirectHWUserClient::ReadMemAsync(OSAsyncReference asyncRef,
+                                 readmem_t * inStruct, readmem_t * outStruct,
+                                 IOByteCount inStructSize,
+                                 IOByteCount * outStructSize)
+{
+    ((void)asyncRef);
+    return ReadMem(inStruct, outStruct, inStructSize, outStructSize);
 }
 
 IOReturn
@@ -630,56 +882,376 @@ DirectHWUserClient::ReadMem(readmem_t * inStruct, readmem_t * outStruct,
                             IOByteCount inStructSize,
                             IOByteCount * outStructSize)
 {
+    ((void)inStructSize);
+
     if (fProvider == NULL || isInactive()) {
         return kIOReturnNotAttached;
+    }
+
+    if (fCrossEndian) {
+        inStruct->core = OSSwapInt32(inStruct->core);
+        inStruct->addr = OSSwapInt64(inStruct->addr);
     }
 
     if (cpu_number() != inStruct->core)
         return kIOReturnIOError;
     outStruct->core = inStruct->core;
-    ReadMemHelper memData = { inStruct, outStruct};
-    mp_rendezvous(NULL, (void (*)(void *))ReadMemHelperFunction, NULL,
-        (void *)&memData);
+    ReadMemHelper memData = { inStruct, outStruct };
+    mp_rendezvous(NULL, (void (*)(void *))ReadMemHelperFunction, NULL, (void *)&memData);
 
     *outStructSize = sizeof(readmem_t);
 
     if (outStruct->core != inStruct->core)
         return kIOReturnIOError;
+
+    if (fCrossEndian) {
+        outStruct->core = OSSwapInt32(outStruct->core);
+        outStruct->addr = OSSwapInt64(outStruct->addr);
+        outStruct->data = OSSwapInt32(outStruct->data);
+    }
     return kIOReturnSuccess;
+}
+
+IOReturn
+DirectHWUserClient::Read(Parameters * inStruct, Parameters * outStruct,
+                            IOByteCount inStructSize,
+                            IOByteCount * outStructSize)
+{
+    return ReadWrite(kRead, inStruct, outStruct, inStructSize, outStructSize);
+}
+
+IOReturn
+DirectHWUserClient::ReadAsync(
+                            OSAsyncReference asyncRef,
+                            Parameters * inStruct, Parameters * outStruct,
+                            IOByteCount inStructSize,
+                            IOByteCount * outStructSize)
+{
+    ((void)asyncRef);
+    return ReadWrite(kRead, inStruct, outStruct, inStructSize, outStructSize);
+}
+
+IOReturn
+DirectHWUserClient::Write(Parameters * inStruct, Parameters * outStruct,
+                            IOByteCount inStructSize,
+                            IOByteCount * outStructSize)
+{
+    return ReadWrite(kWrite, inStruct, outStruct, inStructSize, outStructSize);
+}
+
+IOReturn
+DirectHWUserClient::WriteAsync(
+                            OSAsyncReference asyncRef,
+                            Parameters * inStruct, Parameters * outStruct,
+                            IOByteCount inStructSize,
+                            IOByteCount * outStructSize)
+{
+    ((void)asyncRef);
+    return ReadWrite(kWrite, inStruct, outStruct, inStructSize, outStructSize);
+}
+
+
+static IOPCIBridge * pciHostBridges[10] = {0,0,0,0,0,0,0,0,0,0};
+static UInt32 pciHostFlags[10] = {0,0,0,0,0,0,0,0,0,0};
+enum {
+    pciHostEndianChecked    = 1,
+    pciHostEndianSwap       = 2,
+};
+static int pciHostBridgeCount = -1;
+
+void
+DirectHWUserClient::GetPciHostBridges1(IOService *service, OSIterator *services)
+{
+    while(service) {
+        IOPCIBridge *pciBridge = OSDynamicCast(IOPCIBridge,  service);
+        if (pciBridge) {
+            pciHostBridges[pciHostBridgeCount++] = pciBridge;
+        }
+        else {
+            OSIterator *children = service->getChildIterator(gIOServicePlane);
+            IOService *child = OSDynamicCast(IOService, children->getNextObject());
+            GetPciHostBridges1(child, children);
+            children->release();
+        }
+        if (!services) {
+            break;
+        }
+        service = OSDynamicCast(IOService, services->getNextObject());
+    }
+}
+
+void
+DirectHWUserClient::GetPciHostBridges(void)
+{
+    if (pciHostBridgeCount < 0) {
+        pciHostBridgeCount = 0;
+        IOService *device = getServiceRoot();
+        GetPciHostBridges1(device, 0);
+    }
+}
+
+IOReturn
+DirectHWUserClient::ReadWrite(
+                            uint32_t selector,
+                            Parameters * inStruct, Parameters * outStruct,
+                            IOByteCount inStructSize,
+                            IOByteCount * outStructSize)
+{
+    IOReturn                   ret = kIOReturnBadArgument;
+    Parameters                 * params;
+    IOMemoryDescriptor         * md;
+    IOMemoryMap                * map;
+    void                       * vmaddr;
+    IOPCIBridge                * owner = NULL;
+
+    switch (selector) {
+        case kWrite:
+            if (inStructSize != sizeof(Parameters)) return (kIOReturnBadArgument);
+
+            params = (typeof(params)) inStruct;
+            if (outStructSize != NULL) {
+                *outStructSize = 0;
+            }
+            break;
+
+        case kRead:
+            if (inStructSize  != sizeof(Parameters)) return (kIOReturnBadArgument);
+            if (outStructSize != NULL) {
+                *outStructSize = sizeof(Parameters);
+            }
+
+            bcopy(inStruct, outStruct, sizeof(Parameters));
+            params = (typeof(params)) outStruct;
+            break;
+
+        default:
+            return (kIOReturnBadArgument);
+            break;
+    }
+
+    if (fCrossEndian) {
+        params->options = OSSwapInt32(params->options);
+        params->spaceType = OSSwapInt32(params->spaceType);
+        params->bitWidth = OSSwapInt32(params->bitWidth);
+        params->_resv = OSSwapInt32(params->_resv);
+        if (kConfigSpace == params->spaceType) {
+            Address address;
+            address.addr64 = OSSwapInt64(params->address.addr64);
+            params->address.pci.offset = address.pciswapped.offset;
+            params->address.pci.function = address.pciswapped.function;
+            params->address.pci.device = address.pciswapped.device;
+            params->address.pci.bus = address.pciswapped.bus;
+            params->address.pci.segment = address.pciswapped.segment;
+            params->address.pci.reserved = address.pciswapped.reserved;
+        }
+        else {
+            params->address.addr64 = OSSwapInt64(params->address.addr64);
+        }
+    }
+
+    map = 0;
+    vmaddr = 0;
+    unsigned int offset = 0;
+    IOPCIAddressSpace space;
+    bool doswap = false;
+
+    if (k64BitMemorySpace == params->spaceType) {
+        #ifdef __ppc__
+        md = IOMemoryDescriptor::withAddress((void*)params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn);
+        #else
+            #if defined(KPI_10_4_0_PPC_COMPAT)
+                md = IOMemoryDescriptor::withAddressRange(params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn | kIOMemoryMapperNone, NULL);
+            #else
+                md = IOMemoryDescriptor::withAddress((void*)params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn);
+            #endif
+        #endif
+        if (md) {
+            map = md->map();
+            md->release();
+        }
+        if (!map) return (kIOReturnVMError);
+        vmaddr = (void *)(uintptr_t) map->getAddress();
+    }
+    else if (kConfigSpace == params->spaceType) {
+        GetPciHostBridges();
+        if (params->address.pci.segment < pciHostBridgeCount) {
+            owner = pciHostBridges[params->address.pci.segment];
+        }
+        if (!owner) {
+            return (kIOReturnBadArgument);
+        }
+        space.bits = 0;
+        if (!(pciHostFlags[params->address.pci.segment] & pciHostEndianChecked)) {
+            space.es.busNum = 0;
+            space.es.deviceNum = 0;
+            space.es.functionNum = 0;
+            space.es.registerNumExtended = 0;
+            if (owner->configRead32(space, kIOPCIConfigVendorID) == 0x6b107400) {
+                IOLog("DirectHW: U4 HT Bridge needs endian swapping.\n");
+                pciHostFlags[params->address.pci.segment] |= pciHostEndianSwap;
+            }
+            pciHostFlags[params->address.pci.segment] |= pciHostEndianChecked;
+        }
+        offset = params->address.pci.offset;
+        space.es.busNum              = params->address.pci.bus;
+        space.es.deviceNum           = params->address.pci.device;
+        space.es.functionNum         = params->address.pci.function;
+        space.es.registerNumExtended = (0xF & (offset >> 8));
+        if (
+            (pciHostFlags[params->address.pci.segment] & pciHostEndianSwap)
+            && space.es.busNum == 0
+            && space.es.deviceNum == 0
+            && space.es.functionNum == 0
+        ) {
+            doswap = true;
+            //IOLog("DirectHW: changing offset from %x", offset);
+            switch ((params->bitWidth << 4) | (offset & 3)) {
+                case  0x80: offset = (offset & ~3) | 3; break;
+                case  0x81: offset = (offset & ~3) | 2; break;
+                case  0x82: offset = (offset & ~3) | 1; break;
+                case  0x83: offset = (offset & ~3) | 0; break;
+                case 0x100: offset = (offset & ~3) | 2; break;
+                case 0x102: offset = (offset & ~3) | 0; break;
+            }
+            //IOLog(" to %x\n", offset);
+        }
+    }
+
+    switch (selector) {
+        case kWrite:
+
+            if (fCrossEndian) {
+                params->value = OSSwapInt64(params->value);
+            }
+
+            if (k64BitMemorySpace == params->spaceType) {
+                switch (params->bitWidth) {
+                    case 8:
+                        *((uint8_t *) vmaddr) = params->value;
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 16:
+                        *((uint16_t *) vmaddr) = params->value;
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 32:
+                        *((uint32_t *) vmaddr) = static_cast<uint32_t>(params->value);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 64:
+                        *((uint64_t *) vmaddr) = params->value;
+                        ret = kIOReturnSuccess;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else if (kConfigSpace == params->spaceType) {
+                switch (params->bitWidth) {
+                    case 8:
+                        owner->configWrite8(space, offset, params->value);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 16:
+                        owner->configWrite16(space, offset, params->value);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 32:
+                        owner->configWrite32(space, offset, static_cast<uint32_t>(params->value));
+                        ret = kIOReturnSuccess;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            break;
+
+        case kRead:
+
+            if (k64BitMemorySpace == params->spaceType) {
+                switch (params->bitWidth) {
+                    case 8:
+                        params->value = *((uint8_t *) vmaddr);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 16:
+                        params->value = *((uint16_t *) vmaddr);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 32:
+                        params->value = *((uint32_t *) vmaddr);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 64:
+                        params->value = *((uint64_t *) vmaddr);
+                        ret = kIOReturnSuccess;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else if (kConfigSpace == params->spaceType) {
+                switch (params->bitWidth) {
+                    case 8:
+                        params->value = owner->configRead8(space, offset);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 16:
+                        params->value = doswap ? OSSwapInt16(owner->configRead16(space, offset)) : owner->configRead16(space, offset);
+                        ret = kIOReturnSuccess;
+                        break;
+                    case 32:
+                        params->value = doswap ? OSSwapInt32(owner->configRead32(space, offset)) : owner->configRead32(space, offset);
+                        ret = kIOReturnSuccess;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            
+            if (fCrossEndian) {
+                params->value = OSSwapInt64(params->value);
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    if (map) map->release();
+
+    return (ret);
 }
 
 IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOMemoryDescriptor **memory)
 {
     IOMemoryDescriptor *newmemory = NULL;
 
-#ifndef DEBUG_KEXT
-    ((void)flags);
-#else
-    IOLog("DirectHW: clientMemoryForType(%lx, %p, %p)\n",
-          (unsigned long)type, (void *)flags, (void *)memory);
-#endif /* DEBUG_KEXT */
+    #ifndef DEBUG_KEXT
+        ((void)flags);
+    #else
+        IOLog("DirectHW: clientMemoryForType(%lx, %p, %p)\n",
+              (unsigned long)type, (void *)flags, (void *)memory);
+    #endif
 
-    if (type != 0)
-    {
+    if (type != 0) {
         IOLog("DirectHW: Unknown mapping type %lx.\n", (unsigned long)type);
 
         return kIOReturnUnsupported;
     }
 
-    if ((LastMapAddr == 0) && (LastMapSize == 0))
-    {
+    if ((LastMapAddr == 0) && (LastMapSize == 0)) {
         IOLog("DirectHW: No PrepareMap called.\n");
 
         return kIOReturnNotAttached;
     }
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Mapping physical 0x%16lx[0x%lx]\n",
-          (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
-#endif /* DEBUG_KEXT */
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: Mapping physical 0x%16lx[0x%lx]\n",
+              (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
+    #endif
 
-    if (memory != NULL)
-    {
+    if (memory != NULL) {
         newmemory = IOMemoryDescriptor::withPhysicalAddress(LastMapAddr, LastMapSize, kIODirectionIn);
     }
 
@@ -687,8 +1259,7 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
     LastMapAddr = 0;
     LastMapSize = 0;
 
-    if (newmemory == NULL)
-    {
+    if (newmemory == NULL) {
         IOLog("DirectHW: Could not map memory!\n");
 
         return kIOReturnNotOpen;
@@ -696,14 +1267,13 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
 
     newmemory->retain();
 
-    if (memory != NULL)
-    {
+    if (memory != NULL) {
         *memory = newmemory;
     }
 
-#ifdef DEBUG_KEXT
-    IOLog("DirectHW: Mapping succeeded.\n");
-#endif /* DEBUG_KEXT */
+    #ifdef DEBUG_KEXT
+        IOLog("DirectHW: Mapping succeeded.\n");
+    #endif
 
     return kIOReturnSuccess;
 }

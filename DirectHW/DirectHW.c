@@ -16,73 +16,61 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <AvailabilityMacros.h>
-#include <IOKit/IOKitLib.h>
-#include <ApplicationServices/ApplicationServices.h>
-#include <CoreFoundation/CoreFoundation.h>
-
-#ifdef __GNUC__
-#include <unistd.h>
-#endif /* __GNUC__ */
-
-#include <errno.h>
-
+#include "MacOSMacros.h"
 #include "DirectHW.h"
+#include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef MAP_FAILED
-#define MAP_FAILED	((void *)-1)
-#endif /* MAP_FAILED */
-
-/* define WANT_OLD_API for support of OSX 10.4 and earlier */
-#undef WANT_OLD_API
+#define MAP_FAILED ((void *)-1)
+#endif
 
 /* define DEBUG to print Framework debugging information */
 #undef DEBUG
 
 #ifndef err_get_system
 #define err_get_system(err) (((err)>>26)&0x3f)
-#endif /*  err_get_system */
+#endif
 
 #ifndef err_get_sub
 #define err_get_sub(err)    (((err)>>14)&0xfff)
-#endif /*  err_get_sub */
+#endif
 
 #ifndef err_get_code
 #define err_get_code(err)   ((err)&0x3fff)
-#endif /*  err_get_code */
+#endif
 
-enum
-{
+enum {
     kReadIO,
     kWriteIO,
     kPrepareMap,
     kReadMSR,
     kWriteMSR,
-    kReadCpuID,
+    kReadCpuId,
     kReadMem,
+    kRead,
+    kWrite,
     kNumberOfMethods
 };
 
 typedef struct {
-#if defined(__x86_64__) || defined(__arm64__)
-    UInt64 offset;
-    UInt64 width;
-    UInt64 data;
-#else /* __i386__ || __arm__ */
     UInt32 offset;
     UInt32 width;
-    UInt32 data;
-#endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
+    UInt32 data; // this field is 1 or 2 or 4 bytes starting at the lowest address
 } iomem_t;
 
 typedef struct {
-#if defined(__x86_64__) || defined(__arm64__)
+    UInt64 offset;
+    UInt64 width;
+    UInt64 data; // this field is 1 or 2 or 4 or 8 bytes starting at the lowest address
+} iomem64_t;
+
+typedef struct {
     UInt64 addr;
     UInt64 size;
-#else /* __i386__ || __arm__ */
-    UInt32 addr;
-    UInt32 size;
-#endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
 } map_t;
 
 typedef struct {
@@ -92,15 +80,14 @@ typedef struct {
     union {
         uint64_t io64;
 
-        struct
-        {
-#ifndef __BIG_ENDIAN__
-            UInt32 lo;
-            UInt32 hi;
-#else /* __BIG_ENDIAN__ == 1 */
+        struct {
+#ifdef __BIG_ENDIAN__
             UInt32 hi;
             UInt32 lo;
-#endif /* __BIG_ENDIAN__ */
+#else
+            UInt32 lo;
+            UInt32 hi;
+#endif
         } io32;
     } val;
 } msrcmd_t;
@@ -128,23 +115,18 @@ static int darwin_init(void)
     /* Note the actual security happens in the kernel module.
      * This check is just candy to be able to get nicer output
      */
-    if (getuid() != 0)
-    {
+    if (getuid() != 0) {
         /* Fun's reserved for root */
         errno = EPERM;
-
         return -1;
     }
 
     /* Get the DirectHW driver service */
     iokit_uc = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("DirectHWService"));
 
-    if (!iokit_uc)
-    {
+    if (!iokit_uc) {
         printf("DirectHW.kext not loaded.\n");
-
         errno = ENOSYS;
-
         return -1;
     }
 
@@ -152,12 +134,9 @@ static int darwin_init(void)
     err = IOServiceOpen(iokit_uc, mach_task_self(), 0, &connect);
 
     /* Should not go further if error with service open */
-    if (err != KERN_SUCCESS)
-    {
+    if (err != KERN_SUCCESS) {
         printf("Could not create DirectHW instance.\n");
-
         errno = ENOSYS;
-
         return -1;
     }
 
@@ -169,69 +148,97 @@ static void darwin_cleanup(void)
     IOServiceClose(connect);
 }
 
-int darwin_ioread(int pos, unsigned char * buf, int len)
+kern_return_t MyIOConnectCallStructMethod(
+    io_connect_t    connect,
+    unsigned int    index,
+    void *          in,
+    size_t          dataInLen,
+    void *          out,
+    size_t *        dataOutLen
+)
 {
-
     kern_return_t err;
-    size_t dataInLen = sizeof(iomem_t);
-    size_t dataOutLen = sizeof(iomem_t);
-    iomem_t in;
-    iomem_t out;
-#ifdef __LP64__
-    UInt64 tmpdata;
+#if MAC_OS_X_VERSION_MAX_ALLOWED <= MAC_OS_X_VERSION_10_4 || MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
+    IOByteCount dataOutCount;
+    err = IOConnectMethodStructureIStructureO(connect, index, (IOItemCount)dataInLen, &dataOutCount, in, out);
+    if (dataOutLen)
+        *dataOutLen = dataOutCount;
+#elif defined(__LP64__)
+    err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
 #else
-    UInt32 tmpdata;
-#endif
-
-    in.width = len;
-    in.offset = pos;
-
-#ifdef __LP64__
-    if (len > 8)
-#else
-        if (len > 4)
-#endif
-            return 1;
-
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
     if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kReadIO, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kReadIO, dataInLen, &dataOutLen, &in, &out);
+        /* OSX 10.5 or newer API is available */
+        err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
+    }
+    else {
+        /* Use old API (not available for x86_64) */
+        IOByteCount dataOutCount;
+        err = IOConnectMethodStructureIStructureO(connect, index, (IOItemCount)dataInLen, &dataOutCount, in, out);
+        if (dataOutLen)
+            *dataOutLen = dataOutCount;
     }
 #endif
+    return err;
+}
 
+int darwin_ioread(int pos, unsigned char * buf, int len)
+{
+    kern_return_t err;
+    size_t dataInLen;
+    size_t dataOutLen;
+    void *in;
+    void *out;
+    iomem_t in32;
+    iomem_t out32;
+    iomem64_t in64;
+    iomem64_t out64;
+    UInt64 tmpdata64;
+    UInt32 tmpdata;
+
+    if (len <= 4) {
+        in = &in32;
+        out = &out32;
+        dataInLen = sizeof(in32);
+        dataOutLen = sizeof(out32);
+        in32.width = len;
+        in32.offset = pos;
+    }
+    else if (len <= 8) {
+        in = &in64;
+        out = &out64;
+        dataInLen = sizeof(in64);
+        dataOutLen = sizeof(out64);
+        in64.width = len;
+        in64.offset = pos;
+    }
+    else {
+        return 1;
+    }
+
+    err = MyIOConnectCallStructMethod(connect, kReadIO, in, dataInLen, out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return 1;
 
-    tmpdata = out.data;
-
-    switch (len) {
-        case 1:
-            memcpy(buf, &tmpdata, 1);
-            break;
-
-        case 2:
-            memcpy(buf, &tmpdata, 2);
-            break;
-
-        case 4:
-            memcpy(buf, &tmpdata, 4);
-            break;
-
-#ifdef __LP64__
-        case 8:
-            memcpy(buf, &tmpdata, 8);
-            break;
-#endif
-
-        default:
-            fprintf(stderr, "ERROR: unsupported ioRead length %d\n", len);
-            return 1;
+    if (len <= 4) {
+        tmpdata = out32.data;
+        switch (len) {
+            case 1: memcpy(buf, &tmpdata, 1); break;
+            case 2: memcpy(buf, &tmpdata, 2); break;
+            case 4: memcpy(buf, &tmpdata, 4); break;
+            case 8: memcpy(buf, &tmpdata, 8); break;
+            default:
+                fprintf(stderr, "ERROR: unsupported ioRead length %d\n", len);
+                return 1;
+        }
+    }
+    else {
+        tmpdata64 = out64.data;
+        switch (len) {
+            case 8: memcpy(buf, &tmpdata64, 8); break;
+            default:
+                fprintf(stderr, "ERROR: unsupported ioRead length %d\n", len);
+                return 1;
+        }
     }
 
     return 0;
@@ -240,38 +247,39 @@ int darwin_ioread(int pos, unsigned char * buf, int len)
 static int darwin_iowrite(int pos, unsigned char * buf, int len)
 {
     kern_return_t err;
-    size_t dataInLen = sizeof(iomem_t);
-    size_t dataOutLen = sizeof(iomem_t);
-    iomem_t in;
-    iomem_t out;
+    size_t dataInLen;
+    size_t dataOutLen;
+    void *in;
+    void *out;
+    iomem_t in32;
+    iomem_t out32;
+    iomem64_t in64;
+    iomem64_t out64;
 
-    in.width = len;
-    in.offset = pos;
-    memcpy(&in.data, buf, len);
-
-#ifdef __LP64__
-    if (len > 8)
-#else
-        if (len > 4)
-#endif
-        {
-            return 1;
-        }
-
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kWriteIO, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kWriteIO, dataInLen, &dataOutLen, &in, &out);
+    if (len <= 4) {
+        in = &in32;
+        out = &out32;
+        dataInLen = sizeof(in32);
+        dataOutLen = sizeof(out32);
+        in32.width = len;
+        in32.offset = pos;
+        memcpy(&in32.data, buf, len);
     }
-#endif
+    else if (len <= 8) {
+        in = &in64;
+        out = &out64;
+        dataInLen = sizeof(in64);
+        dataOutLen = sizeof(out64);
+        in64.width = len;
+        in64.offset = pos;
+        memcpy(&in64.data, buf, len);
+    }
+    else {
+        return 1;
+    }
 
-    if (err != KERN_SUCCESS)
-    {
+    err = MyIOConnectCallStructMethod(connect, kWriteIO, in, dataInLen, out, &dataOutLen);
+    if (err != KERN_SUCCESS) {
         return 1;
     }
 
@@ -280,6 +288,7 @@ static int darwin_iowrite(int pos, unsigned char * buf, int len)
 
 
 /* Compatibility interface */
+
 unsigned char inb(unsigned short addr)
 {
     unsigned char ret = 0;
@@ -335,21 +344,19 @@ void outq(unsigned long val, unsigned short addr)
 int iopl(int level __attribute__((unused)))
 {
     atexit(darwin_cleanup);
-
     return darwin_init();
 }
 
 void *map_physical(uint64_t phys_addr, size_t len)
 {
     kern_return_t err;
-#if __LP64__
+#if defined(__LP64__) && (MAC_OS_X_VERSION_SDK >= MAC_OS_X_VERSION_10_5)
     mach_vm_address_t addr;
     mach_vm_size_t size;
 #else
     vm_address_t addr;
     vm_size_t size;
 #endif
-
     size_t dataInLen = sizeof(map_t);
     size_t dataOutLen = sizeof(map_t);
 
@@ -361,20 +368,9 @@ void *map_physical(uint64_t phys_addr, size_t len)
 
 #ifdef DEBUG
     printf("map_phys: phys %08lx, %08x\n", phys_addr, len);
-#endif /* DEBUG */
-
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kPrepareMap, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kPrepareMap, dataInLen, &dataOutLen, &in, &out);
-    }
 #endif
 
+    err = MyIOConnectCallStructMethod(connect, kPrepareMap, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS) {
         printf("\nError(kPrepareMap): system 0x%x subsystem 0x%x code 0x%x ",
                err_get_system(err), err_get_sub(err), err_get_code(err));
@@ -437,20 +433,8 @@ msr_t rdmsr(int addr)
     in.core = current_logical_cpu;
     in.index = addr;
 
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kReadMSR, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kReadMSR, dataInLen, &dataOutLen, &in, &out);
-    }
-#endif
-
-    if (err != KERN_SUCCESS)
-    {
+    err = MyIOConnectCallStructMethod(connect, kReadMSR, &in, dataInLen, &out, &dataOutLen);
+    if (err != KERN_SUCCESS) {
         return ret;
     }
 
@@ -470,18 +454,7 @@ int rdcpuid(uint32_t eax, uint32_t ecx, uint32_t cpudata[4])
     in.eax = eax;
     in.ecx = ecx;
 
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kReadCpuID, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kReadCpuID, dataInLen, &dataOutLen, &in, &out);
-    }
-    #endif
-
+    err = MyIOConnectCallStructMethod(connect, kReadCpuId, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return -1;
 
@@ -499,18 +472,7 @@ int readmem32(uint64_t addr, uint32_t* data)
     in.core = current_logical_cpu;
     in.addr = addr;
 
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kReadMem, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kReadMem, dataInLen, &dataOutLen, &in, &out);
-    }
-#endif
-
+    err = MyIOConnectCallStructMethod(connect, kReadMem, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return -1;
 
@@ -530,22 +492,9 @@ int wrmsr(int addr, msr_t msr)
     in.index = addr;
     in.val.io64 = msr.io64;
 
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    /* Check if OSX 10.5 API is available */
-    if (IOConnectCallStructMethod != NULL) {
-#endif
-        err = IOConnectCallStructMethod(connect, kWriteMSR, &in, dataInLen, &out, &dataOutLen);
-#if !defined(__LP64__) && defined(WANT_OLD_API)
-    } else {
-        /* Use old API */
-        err = IOConnectMethodStructureIStructureO(connect, kWriteMSR, dataInLen, &dataOutLen, &in, &out);
-    }
-#endif
-
+    err = MyIOConnectCallStructMethod(connect, kWriteMSR, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
-    {
         return 1;
-    }
 
     return 0;
 }
@@ -553,6 +502,5 @@ int wrmsr(int addr, msr_t msr)
 int logical_cpu_select(int cpu)
 {
     current_logical_cpu = cpu;
-
     return current_logical_cpu;
 }
