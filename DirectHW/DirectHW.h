@@ -19,7 +19,8 @@
 #ifndef __DIRECTHW_H
 #define __DIRECTHW_H
 
-#include <stdint.h>
+#include <stddef.h>
+#include <IOKit/IOKitLib.h>
 
 int iopl(int unused);
 
@@ -62,6 +63,15 @@ int wrmsr(int addr, msr_t msr);
 int logical_cpu_select(int cpu);
 int rdcpuid(uint32_t eax, uint32_t ecx, uint32_t cpudata[4]);
 int darwin_ioread(int pos, unsigned char * buf, int len);
+
+kern_return_t MyIOConnectCallStructMethod(
+    io_connect_t    connect,
+    unsigned int    index,
+    void *          in,
+    size_t          dataInLen,
+    void *          out,
+    size_t *        dataOutLen
+);
 
 #ifndef INVALID_MSR_LO
 #define INVALID_MSR_LO 0x63744857

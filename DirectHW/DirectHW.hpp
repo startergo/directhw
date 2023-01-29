@@ -18,46 +18,43 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include "MacOSMacros.h"
+
 #include <IOKit/IOLib.h>
 #include <IOKit/IOService.h>
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IOKitKeys.h>
 #include <IOKit/IOMemoryDescriptor.h>
 
-#if defined(__i386__) || defined(__x86_64__)
-#include <architecture/i386/pio.h>
-#endif /* __i386__ || __x86_64__ */
-
 #ifndef DIRECTHW_VERSION
-#define DIRECTHW_VERSION "1.5.0"
-#endif /* DIRECTHW_VERSION */
+    #define DIRECTHW_VERSION "1.6.0"
+#endif
 
 #ifndef DIRECTHW_VERNUM
-#define DIRECTHW_VERNUM 0x00100500
-#endif /* DIRECTHW_VERNUM */
+    #define DIRECTHW_VERNUM 0x00100500
+#endif
 
 #ifndef APPLE_KEXT_OVERRIDE
-#ifdef __clang__
-#define APPLE_KEXT_OVERRIDE override
-#else /* !__clang__ */
-#define APPLE_KEXT_OVERRIDE
-#endif /* __clang__ */
-#endif /* APPLE_KEXT_OVERRIDE */
-/* */
+    #ifdef __clang__
+        #define APPLE_KEXT_OVERRIDE override
+    #else
+        #define APPLE_KEXT_OVERRIDE
+    #endif
+#endif
 
 #ifndef LIBKERN_RETURNS_NOT_RETAINED
-#define LIBKERN_RETURNS_NOT_RETAINED
-#endif /* LIBKERN_RETURNS_NOT_RETAINED */
+    #define LIBKERN_RETURNS_NOT_RETAINED
+#endif
 
 #ifndef rdmsr
-#define rdmsr(msr, lo, hi) \
-__asm__ volatile("rdmsr" : "=a" (lo), "=d" (hi) : "c" (msr))
-#endif /* rdmsr */
+    #define rdmsr(msr, lo, hi) \
+    __asm__ volatile("rdmsr" : "=a" (lo), "=d" (hi) : "c" (msr))
+#endif
 
 #ifndef wrmsr
-#define wrmsr(msr, lo, hi) \
-__asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
-#endif /*  wrmsr */
+    #define wrmsr(msr, lo, hi) \
+    __asm__ volatile("wrmsr" : : "c" (msr), "a" (lo), "d" (hi))
+#endif
 
 class DirectHWService : public IOService
 {
@@ -66,9 +63,6 @@ class DirectHWService : public IOService
 public:
     virtual bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
 };
-
-/* */
-/*class DirectHWService;*/
 
 class DirectHWUserClient : public IOUserClient
 {
@@ -81,31 +75,33 @@ class DirectHWUserClient : public IOUserClient
         kReadMSR,
         kWriteMSR,
         kReadCpuId,
- 		kReadMem,
+        kReadMem,
+        kRead,
+        kWrite,
         kNumberOfMethods
     };
 
     typedef struct {
-#if defined(__x86_64__) || defined(__arm64__)
         UInt64 offset;
         UInt64 width;
-        UInt64 data;
-#else /* __i386__ || __arm__ */
+        UInt64 data; // this field is always little endian
+    } iomem64_t;
+
+    typedef struct {
         UInt32 offset;
         UInt32 width;
-        UInt32 data;
-#endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
+        UInt32 data; // this field is always little endian
     } iomem_t;
 
     typedef struct {
-#if defined(__x86_64__) || defined(__arm64__)
         UInt64 addr;
         UInt64 size;
-#else /* __i386__ || __arm__ */
+    } map_t;
+
+    typedef struct {
         UInt32 addr;
         UInt32 size;
-#endif /* __i386__ || __x86_64__ || __arm__ || __arm64__ */
-    } map_t;
+    } map32_t;
 
     typedef struct {
         UInt32 core;
@@ -114,15 +110,14 @@ class DirectHWUserClient : public IOUserClient
         union {
             uint64_t io64;
 
-            struct
-            {
-#ifndef __BIG_ENDIAN__
-                UInt32 lo;
-                UInt32 hi;
-#else /* __BIG_ENDIAN__ == 1 */
-                UInt32 hi;
-                UInt32 lo;
-#endif /* __BIG_ENDIAN__ */
+            struct {
+                #ifndef __BIG_ENDIAN__
+                    UInt32 lo;
+                    UInt32 hi;
+                #else
+                    UInt32 hi;
+                    UInt32 lo;
+                #endif
             } io32;
         } val;
     } msrcmd_t;
@@ -131,17 +126,57 @@ class DirectHWUserClient : public IOUserClient
         uint32_t core;
         uint32_t eax;
         uint32_t ecx;
-        uint32_t output[4];
+        uint32_t cpudata[4];
     } cpuid_t;
 
- 	typedef struct {
+     typedef struct {
         uint32_t core;
         uint64_t addr;
         uint32_t data;
     } readmem_t;
 
+    /* Space definitions */
+    enum {
+        kConfigSpace           = 0,
+        kIOSpace               = 1,
+        k32BitMemorySpace      = 2,
+        k64BitMemorySpace      = 3
+    };
+
+    union Address {
+        uint64_t addr64;
+        struct {
+            unsigned int offset     :16;
+            unsigned int function   :3;
+            unsigned int device     :5;
+            unsigned int bus        :8;
+            unsigned int segment    :16;
+            unsigned int reserved   :16;
+        } pci;
+        struct {
+            unsigned int reserved   :16;
+            unsigned int segment    :16;
+            unsigned int bus        :8;
+            unsigned int device     :5;
+            unsigned int function   :3;
+            unsigned int offset     :16;
+        } pciswapped;
+    };
+    typedef union Address Address;
+
+    struct Parameters {
+        uint32_t options;
+        uint32_t spaceType;
+        uint32_t bitWidth;
+        uint32_t _resv;
+        uint64_t value;
+        Address  address;
+    };
+    typedef struct Parameters Parameters;
+
+
 public:
-    virtual bool initWithTask(task_t task, void *securityID, UInt32 type) APPLE_KEXT_OVERRIDE;
+    virtual bool initWithTask(task_t task, void *securityID, UInt32 type, OSDictionary* properties) APPLE_KEXT_OVERRIDE;
 
     virtual bool start(IOService * provider) APPLE_KEXT_OVERRIDE;
     virtual void stop(IOService * provider) APPLE_KEXT_OVERRIDE;
@@ -205,15 +240,50 @@ protected:
                                    IOByteCount *outStructSize);
 
     virtual IOReturn ReadCpuId(cpuid_t * inStruct, cpuid_t * outStruct,
+                               IOByteCount inStructSize,
+                               IOByteCount * outStructSize);
+
+    virtual IOReturn ReadCpuIdAsync(OSAsyncReference asyncRef,
+                                    cpuid_t * inStruct, cpuid_t * outStruct,
+                                    IOByteCount inStructSize,
+                                    IOByteCount * outStructSize);
+
+    virtual IOReturn ReadMem(readmem_t * inStruct, readmem_t * outStruct,
+                             IOByteCount inStructSize,
+                             IOByteCount * outStructSize);
+
+    virtual IOReturn ReadMemAsync(OSAsyncReference asyncRef,
+                                  readmem_t * inStruct, readmem_t * outStruct,
+                                  IOByteCount inStructSize,
+                                  IOByteCount * outStructSize);
+
+    virtual IOReturn Read(Parameters * inStruct, Parameters * outStruct,
+                          IOByteCount inStructSize,
+                          IOByteCount * outStructSize);
+
+    virtual IOReturn ReadAsync(OSAsyncReference asyncRef,
+                               Parameters * inStruct, Parameters * outStruct,
+                               IOByteCount inStructSize,
+                               IOByteCount * outStructSize);
+
+    virtual IOReturn Write(Parameters * inStruct, Parameters * outStruct,
+                           IOByteCount inStructSize,
+                           IOByteCount * outStructSize);
+
+    virtual IOReturn WriteAsync(OSAsyncReference asyncRef,
+                                Parameters * inStruct, Parameters * outStruct,
                                 IOByteCount inStructSize,
                                 IOByteCount * outStructSize);
 
-    virtual IOReturn ReadMem(readmem_t * inStruct, readmem_t * outStruct,
-                                IOByteCount inStructSize,
-                                IOByteCount * outStructSize);
+    virtual IOReturn ReadWrite(uint32_t selector,
+                               Parameters * inStruct, Parameters * outStruct,
+                               IOByteCount inStructSize,
+                               IOByteCount * outStructSize);
 
 private:
     task_t fTask;
+    bool fCrossEndian;
+
     UInt64 LastMapAddr;
     UInt64 LastMapSize;
 
@@ -231,33 +301,22 @@ private:
         cpuid_t *in, *out;
     } CPUIDHelper;
 
- 	typedef struct {
+    typedef struct {
         readmem_t *in, *out;
     } ReadMemHelper;
 
     static inline void cpuid(uint32_t op1, uint32_t op2, uint32_t *data);
+
+    void GetPciHostBridges1(IOService *service, OSIterator *services);
+    void GetPciHostBridges(void);
 };
 
-extern "C"
-{
-/* from sys/osfmk/i386/mp.c */
-extern void mp_rendezvous(void (*setup_func)(void *),
-                          void (*action_func)(void *),
-                          void (*teardown_func)(void *),
-                          void *arg);
-
-extern void mp_rendezvous_no_intrs(void (*action_func)(void *),
-                                   void *arg);
-
-extern int cpu_number(void);
-}
-
 #ifndef INVALID_MSR_LO
-#define INVALID_MSR_LO 0x63744857
-#endif /*  INVALID_MSR_LO */
+    #define INVALID_MSR_LO 0x63744857
+#endif
 
 #ifndef INVALID_MSR_HI
-#define INVALID_MSR_HI 0x44697265
-#endif /*  INVALID_MSR_HI */
+    #define INVALID_MSR_HI 0x44697265
+#endif
 
 #endif /* __DIRECTHW_HPP__ */
