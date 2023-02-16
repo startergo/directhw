@@ -19,7 +19,7 @@
 all: main libs
 
 main:
-	xcodebuild -alltargets
+	xcodebuild -alltargets -project DirectHW.xcodeproj
 
 libs: DirectHW.c DirectHW.h
 	$(CC) DirectHW.c -dynamiclib -framework IOKit -o libDirectHW.dylib
