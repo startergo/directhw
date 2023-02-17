@@ -43,18 +43,9 @@ int readmem32(uint64_t addr, uint32_t* data);
 void *map_physical(uint64_t phys_addr, size_t len);
 void unmap_physical(void *virt_addr, size_t len);
 
-typedef union {
-    struct {
-#ifdef __BIG_ENDIAN__
-        uint32_t hi;
-        uint32_t lo;
-#else /* __LITTLE_ENDIAN__ */
-        uint32_t lo;
-        uint32_t hi;
-#endif /* __BIG_ENDIAN__ */
-    } io32;
-
-    uint64_t io64;
+typedef struct {
+    uint32_t hi;
+    uint32_t lo;
 } msr_t;
 
 msr_t rdmsr(int addr);

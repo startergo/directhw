@@ -106,20 +106,8 @@ class DirectHWUserClient : public IOUserClient
     typedef struct {
         UInt32 core;
         UInt32 index;
-
-        union {
-            uint64_t io64;
-
-            struct {
-                #ifndef __BIG_ENDIAN__
-                    UInt32 lo;
-                    UInt32 hi;
-                #else
-                    UInt32 hi;
-                    UInt32 lo;
-                #endif
-            } io32;
-        } val;
+        UInt32 hi;
+        UInt32 lo;
     } msrcmd_t;
 
     typedef struct {

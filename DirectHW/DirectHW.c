@@ -76,20 +76,8 @@ typedef struct {
 typedef struct {
     UInt32 core;
     UInt32 index;
-
-    union {
-        uint64_t io64;
-
-        struct {
-#ifdef __BIG_ENDIAN__
-            UInt32 hi;
-            UInt32 lo;
-#else
-            UInt32 lo;
-            UInt32 hi;
-#endif
-        } io32;
-    } val;
+    UInt32 hi;
+    UInt32 lo;
 } msrcmd_t;
 
 typedef struct {
@@ -428,7 +416,9 @@ msr_t rdmsr(int addr)
     size_t dataInLen = sizeof(msrcmd_t);
     size_t dataOutLen = sizeof(msrcmd_t);
     msrcmd_t in, out;
-    msr_t ret = { INVALID_MSR_HI, INVALID_MSR_LO };
+    msr_t ret;
+    ret.lo = INVALID_MSR_LO;
+    ret.hi = INVALID_MSR_HI;
 
     in.core = current_logical_cpu;
     in.index = addr;
@@ -438,7 +428,8 @@ msr_t rdmsr(int addr)
         return ret;
     }
 
-    ret.io64 = out.val.io64;
+    ret.lo = out.lo;
+    ret.hi = out.hi;
 
     return ret;
 }
@@ -490,7 +481,8 @@ int wrmsr(int addr, msr_t msr)
 
     in.core = current_logical_cpu;
     in.index = addr;
-    in.val.io64 = msr.io64;
+    in.lo = msr.lo;
+    in.hi = msr.hi;
 
     err = MyIOConnectCallStructMethod(connect, kWriteMSR, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
