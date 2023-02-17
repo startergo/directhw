@@ -67,7 +67,9 @@
 				5D99329C0D0F952400760F43 /* Products */,
 				AB66BE3025B4AE2600943C69 /* Frameworks */,
 			);
+			indentWidth = 4;
 			sourceTree = "<group>";
+			tabWidth = 4;
 		};
 		5D9932940D0F94F500760F43 /* Source User */ = {
 			isa = PBXGroup;
