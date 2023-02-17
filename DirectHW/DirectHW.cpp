@@ -664,8 +664,8 @@ DirectHWUserClient::MSRHelperFunction(void *data)
 
     outStruct->core = ((UInt32)-1);
 
-    outStruct->val.io32.lo = INVALID_MSR_LO;
-    outStruct->val.io32.hi = INVALID_MSR_HI;
+    outStruct->lo = INVALID_MSR_LO;
+    outStruct->hi = INVALID_MSR_HI;
 
     uint32_t cpuiddata[4];
 
@@ -696,11 +696,11 @@ DirectHWUserClient::MSRHelperFunction(void *data)
 
     if (MSRData->Read) {
         uint64_t ret = rdmsr64(inStruct->index);
-
-        outStruct->val.io64 = ret;
+        outStruct->lo = (uint32_t)ret;
+        outStruct->hi = ret >> 32;
     }
     else {
-        wrmsr64(inStruct->index, inStruct->val.io64);
+        wrmsr64(inStruct->index, ((uint64_t)inStruct->hi << 32) | inStruct->lo);
     }
 
     outStruct->index = inStruct->index;
@@ -731,7 +731,8 @@ DirectHWUserClient::ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     if (fCrossEndian) {
         inStruct->core = OSSwapInt32(inStruct->core);
         inStruct->index = OSSwapInt32(inStruct->index);
-        inStruct->val.io64 = OSSwapInt64(inStruct->val.io64);
+        inStruct->lo = OSSwapInt32(inStruct->lo);
+        inStruct->hi = OSSwapInt32(inStruct->hi);
     }
 
     MSRHelper MSRData = { inStruct, outStruct, true };
@@ -751,14 +752,15 @@ DirectHWUserClient::ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: ReadMSR(0x%16lx) => 0x%16llx\n",
-              (unsigned long)inStruct->index, (unsigned long long)outStruct->val.io64);
+        IOLog("DirectHW: ReadMSR(0x%16lx) => 0x%8lx%08lx\n",
+              (unsigned long)inStruct->index, (unsigned long)outStruct->hi, (unsigned long)outStruct->lo);
     #endif
 
     if (fCrossEndian) {
         outStruct->core = OSSwapInt32(outStruct->core);
         outStruct->index = OSSwapInt32(outStruct->index);
-        outStruct->val.io64 = OSSwapInt64(outStruct->val.io64);
+        outStruct->lo = OSSwapInt32(outStruct->lo);
+        outStruct->hi = OSSwapInt32(outStruct->hi);
     }
     return kIOReturnSuccess;
 }
@@ -787,12 +789,13 @@ DirectHWUserClient::WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     if (fCrossEndian) {
         inStruct->core = OSSwapInt32(inStruct->core);
         inStruct->index = OSSwapInt32(inStruct->index);
-        inStruct->val.io64 = OSSwapInt64(inStruct->val.io64);
+        inStruct->lo = OSSwapInt32(inStruct->lo);
+        inStruct->hi = OSSwapInt32(inStruct->hi);
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: WriteMSR(0x%16lx) = 0x%16llx\n",
-              (unsigned long)inStruct->index, (unsigned long long)inStruct->val.io64);
+        IOLog("DirectHW: WriteMSR(0x%16lx) = 0x%8lx%08lx\n",
+              (unsigned long)inStruct->index, (unsigned long)inStruct->hi, (unsigned long)inStruct->lo);
     #endif
 
     MSRHelper MSRData = { inStruct, outStruct, false };
@@ -814,7 +817,8 @@ DirectHWUserClient::WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     if (fCrossEndian) {
         outStruct->core = OSSwapInt32(outStruct->core);
         outStruct->index = OSSwapInt32(outStruct->index);
-        outStruct->val.io64 = OSSwapInt64(outStruct->val.io64);
+        outStruct->lo = OSSwapInt32(outStruct->lo);
+        outStruct->hi = OSSwapInt32(outStruct->hi);
     }
     return kIOReturnSuccess;
 }
