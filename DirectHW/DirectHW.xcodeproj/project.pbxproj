@@ -423,9 +423,9 @@
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
-				MODULE_VERSION = 1.6.0;
+				MODULE_VERSION = 1.6.1;
 				OTHER_LDFLAGS = "-static";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
@@ -451,9 +451,9 @@
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
-				MODULE_VERSION = 1.6.0;
+				MODULE_VERSION = 1.6.1;
 				OTHER_LDFLAGS = "-static";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
@@ -529,7 +529,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
-				CURRENT_PROJECT_VERSION = 1.6.0;
+				CURRENT_PROJECT_VERSION = 1.6.1;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				FRAMEWORK_VERSION = A;
@@ -543,8 +543,8 @@
 				INFOPLIST_FILE = "DirectHW-Framework-Info.plist";
 				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Frameworks";
 				KEEP_PRIVATE_EXTERNS = NO;
-				MARKETING_VERSION = 1.6.0;
-				MODULE_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
+				MODULE_VERSION = 1.6.1;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
@@ -556,7 +556,7 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1.6.0;
+				CURRENT_PROJECT_VERSION = 1.6.1;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				FRAMEWORK_VERSION = A;
@@ -567,8 +567,8 @@
 				);
 				INFOPLIST_FILE = "DirectHW-Framework-Info.plist";
 				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Frameworks";
-				MARKETING_VERSION = 1.6.0;
-				MODULE_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
+				MODULE_VERSION = 1.6.1;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
