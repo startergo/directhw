@@ -29,10 +29,12 @@ libs: DirectHW.c DirectHW.h
 
 install:
 	sudo mkdir -p /usr/local/lib
-	sudo cp -r build/Release/DirectHW.kext /Library/Extensions/DirectHW.kext
-	sudo cp -r build/Release/DirectHW.framework /Library/Frameworks/DirectHW.framework
-	sudo cp -r build/Release/libDirectHW.a /usr/local/lib/libDirectHW.a
-	sudo cp -r build/Release/libDirectHW.dylib /usr/local/lib/libDirectHW.dylib
+	sudo rm -R /Library/Extensions/DirectHW.kext
+	sudo cp -R build/Release/DirectHW.kext /Library/Extensions/
+	sudo rm -R /Library/Frameworks/DirectHW.framework
+	sudo cp -R build/Release/DirectHW.framework /Library/Frameworks/
+	sudo cp build/Release/libDirectHW.a /usr/local/lib/
+	sudo cp build/Release/libDirectHW.dylib /usr/local/lib/
 	sudo chmod -R 755 /Library/Extensions/DirectHW.kext
 	sudo chmod -R 755 /Library/Frameworks/DirectHW.framework
 	sudo chmod 644 /usr/local/lib/libDirectHW.a
