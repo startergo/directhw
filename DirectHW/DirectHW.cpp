@@ -53,7 +53,7 @@
 extern "C"
 {
     /* from sys/osfmk/i386/mp.c */
-#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_5
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_5 || defined(__arm64e__)
     #if defined(__i386__) || defined(__x86_64__)
         extern void mp_rendezvous(void (*setup_func)(void *),
                                   void (*action_func)(void *),
