@@ -967,7 +967,7 @@ void
 DirectHWUserClient::GetPciHostBridges1(IOService *service, OSIterator *services)
 {
     while(service) {
-        IOPCIBridge *pciBridge = OSDynamicCast(IOPCIBridge,  service);
+        IOPCIBridge *pciBridge = OSDynamicCast(IOPCIBridge, service);
         if (pciBridge) {
             pciHostBridges[pciHostBridgeCount++] = pciBridge;
         }
