@@ -292,7 +292,6 @@
 					ppc,
 					ppc64,
 				);
-				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -377,7 +376,6 @@
 					ppc,
 				);
 				CURRENT_PROJECT_VERSION = "$(MODULE_VERSION)";
-				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_MODEL_TUNING = G5;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"MODULE_VERSION=$(MODULE_VERSION)",
@@ -389,6 +387,7 @@
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
+				KEEP_PRIVATE_EXTERNS = YES;
 				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
 				MODULE_VERSION = 1.6.1;
@@ -418,11 +417,13 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"MODULE_VERSION=$(MODULE_VERSION)",
 					"PRODUCT_NAME=$(PRODUCT_NAME)",
+					"$(inherited)",
 				);
 				HEADER_SEARCH_PATHS = "${SDK}/usr/include";
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
+				KEEP_PRIVATE_EXTERNS = YES;
 				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
 				MODULE_VERSION = 1.6.1;
