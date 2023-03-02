@@ -18,32 +18,57 @@
 
 all: main libs
 
+is11   := $(shell bc <<< "$${OSTYPE\#darwin} >= 20")
+is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} >= 10 && $${OSTYPE\#darwin} < 20")
+is10_5 := $(shell bc <<< "$${OSTYPE\#darwin} >= 9  && $${OSTYPE\#darwin} < 10")
+is10_4 := $(shell bc <<< "                            $${OSTYPE\#darwin} <  9")
+
+# latestsdk := $(shell xcodebuild -showsdks | sort -r | sed -nE '/.*(-sdk macosx.*)/ { s//\1/;p;q; }')
+
+proj := DirectHW.xcodeproj
+build := build
+extensions := /Library/Extensions
+
+ifeq ($(is10_6), 1)
+	proj := DirectHW10.6.xcodeproj
+	build := build/build10.6
+endif
+ifeq ($(is10_5), 1)
+	proj := DirectHW10.5.xcodeproj
+	build := build/build10.5
+	extensions := /System/Library/Extensions
+endif
+ifeq ($(is10_4), 1)
+	proj := DirectHW10.4.xcodeproj
+	build := build/build10.4
+	extensions := /System/Library/Extensions
+endif
+
 main:
-	xcodebuild -alltargets -project DirectHW.xcodeproj
+	xcodebuild -alltargets -project $(proj)
 
 libs: DirectHW.c DirectHW.h
-	$(CC) DirectHW.c -dynamiclib -framework IOKit -o libDirectHW.dylib
-	$(CC) -static -c DirectHW.c -o libDirectHW.a
-	mv libDirectHW.dylib build/Release/libDirectHW.dylib
-	mv libDirectHW.a build/Release/libDirectHW.a
+	$(CC) DirectHW.c -dynamiclib -framework IOKit -o $(build)/Release/libDirectHW.dylib
+	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
 
 install:
 	sudo mkdir -p /usr/local/lib
-	sudo rm -R /Library/Extensions/DirectHW.kext
-	sudo cp -R build/Release/DirectHW.kext /Library/Extensions/
-	sudo rm -R /Library/Frameworks/DirectHW.framework
-	sudo cp -R build/Release/DirectHW.framework /Library/Frameworks/
-	sudo cp build/Release/libDirectHW.a /usr/local/lib/
-	sudo cp build/Release/libDirectHW.dylib /usr/local/lib/
-	sudo chmod -R 755 /Library/Extensions/DirectHW.kext
+	sudo rm -R $(extensions)/DirectHW.kext || :
+	sudo cp -R $(build)/Release/DirectHW.kext $(extensions)/
+	sudo rm -R /Library/Frameworks/DirectHW.framework || :
+	sudo cp -R $(build)/Release/DirectHW.framework /Library/Frameworks/
+	sudo cp $(build)/Release/libDirectHW.a /usr/local/lib/
+	sudo cp $(build)/Release/libDirectHW.dylib /usr/local/lib/
+	sudo chmod -R 755 $(extensions)/DirectHW.kext
 	sudo chmod -R 755 /Library/Frameworks/DirectHW.framework
 	sudo chmod 644 /usr/local/lib/libDirectHW.a
 	sudo chmod 644 /usr/local/lib/libDirectHW.dylib
-	sudo chown -R root:wheel /Library/Extensions/DirectHW.kext
+	sudo chown -R root:wheel $(extensions)/DirectHW.kext
 	sudo chown -R root:wheel /Library/Frameworks/DirectHW.framework
-	sudo kextunload -v /Library/Extensions/DirectHW.kext
-	sudo kextload -v /Library/Extensions/DirectHW.kext
-	sudo kmutil install --volume-root / --check-rebuild
+	sudo kextunload -v $(extensions)/DirectHW.kext || :
+	sudo kextload -v $(extensions)/DirectHW.kext
+	sudo touch $(extensions) || :
+	command -v kmutil > /dev/null && sudo kmutil install --volume-root / --check-rebuild || :
 
 clean:
 	rm -rf build
