@@ -147,10 +147,7 @@ kern_return_t MyIOConnectCallStructMethod(
 {
     kern_return_t err;
 #if MAC_OS_X_VERSION_MAX_ALLOWED <= MAC_OS_X_VERSION_10_4 || MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
-    IOByteCount dataOutCount;
-    err = IOConnectMethodStructureIStructureO(connect, index, (IOItemCount)dataInLen, &dataOutCount, in, out);
-    if (dataOutLen)
-        *dataOutLen = dataOutCount;
+    err = IOConnectMethodStructureIStructureO(connect, index, dataInLen, dataOutLen, in, out);
 #elif defined(__LP64__)
     err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
 #else
@@ -160,10 +157,7 @@ kern_return_t MyIOConnectCallStructMethod(
     }
     else {
         /* Use old API (not available for x86_64) */
-        IOByteCount dataOutCount;
-        err = IOConnectMethodStructureIStructureO(connect, index, (IOItemCount)dataInLen, &dataOutCount, in, out);
-        if (dataOutLen)
-            *dataOutLen = dataOutCount;
+        err = IOConnectMethodStructureIStructureO(connect, index, dataInLen, dataOutLen, in, out);
     }
 #endif
     return err;
