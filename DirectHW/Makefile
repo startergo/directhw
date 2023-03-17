@@ -28,6 +28,7 @@ is10_4 := $(shell bc <<< "                            $${OSTYPE\#darwin} <  9")
 proj := DirectHW.xcodeproj
 build := build
 extensions := /Library/Extensions
+debugsym :=
 
 ifeq ($(is10_6), 1)
 	proj := DirectHW10.6.xcodeproj
@@ -37,6 +38,7 @@ ifeq ($(is10_5), 1)
 	proj := DirectHW10.5.xcodeproj
 	build := build/build10.5
 	extensions := /System/Library/Extensions
+	debugsym := -gstabs+
 endif
 ifeq ($(is10_4), 1)
 	proj := DirectHW10.4.xcodeproj
@@ -48,7 +50,7 @@ main:
 	xcodebuild -alltargets -project $(proj)
 
 libs: DirectHW.c DirectHW.h
-	$(CC) DirectHW.c -dynamiclib -framework IOKit -o $(build)/Release/libDirectHW.dylib
+	$(CC) DirectHW.c -dynamiclib -framework IOKit -o $(build)/Release/libDirectHW.dylib $(debugsym)
 	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
 
 install:
