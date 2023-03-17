@@ -38,7 +38,7 @@ ifeq ($(is10_5), 1)
 	proj := DirectHW10.5.xcodeproj
 	build := build/build10.5
 	extensions := /System/Library/Extensions
-	debugsym := -gstabs+
+	debugsym := -g
 endif
 ifeq ($(is10_4), 1)
 	proj := DirectHW10.4.xcodeproj
