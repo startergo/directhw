@@ -93,7 +93,7 @@ typedef struct {
     uint32_t data;
 } readmem_t;
 
-static io_connect_t connect = -1;
+static io_connect_t darwin_connect = MACH_PORT_NULL;
 static io_service_t iokit_uc;
 
 static int darwin_init(void)
@@ -119,7 +119,7 @@ static int darwin_init(void)
     }
 
     /* Create an instance */
-    err = IOServiceOpen(iokit_uc, mach_task_self(), 0, &connect);
+    err = IOServiceOpen(iokit_uc, mach_task_self(), 0, &darwin_connect);
 
     /* Should not go further if error with service open */
     if (err != KERN_SUCCESS) {
@@ -133,7 +133,10 @@ static int darwin_init(void)
 
 static void darwin_cleanup(void)
 {
-    IOServiceClose(connect);
+    if (darwin_connect != MACH_PORT_NULL) {
+        IOServiceClose(darwin_connect);
+        darwin_connect = MACH_PORT_NULL;
+    }
 }
 
 kern_return_t MyIOConnectCallStructMethod(
@@ -161,6 +164,23 @@ kern_return_t MyIOConnectCallStructMethod(
     }
 #endif
     return err;
+}
+
+static kern_return_t dhw_IOConnectCallStructMethod(
+    unsigned int    index,
+    void *          in,
+    size_t          dataInLen,
+    void *          out,
+    size_t *        dataOutLen
+)
+{
+    if (darwin_connect == MACH_PORT_NULL) {
+        iopl(3);
+    }
+    if (darwin_connect != MACH_PORT_NULL) {
+        return MyIOConnectCallStructMethod(darwin_connect, index, in, dataInLen, out, dataOutLen);
+    }
+    return kIOReturnError;
 }
 
 int darwin_ioread(int pos, unsigned char * buf, int len)
@@ -197,7 +217,7 @@ int darwin_ioread(int pos, unsigned char * buf, int len)
         return 1;
     }
 
-    err = MyIOConnectCallStructMethod(connect, kReadIO, in, dataInLen, out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kReadIO, in, dataInLen, out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return 1;
 
@@ -260,7 +280,7 @@ static int darwin_iowrite(int pos, unsigned char * buf, int len)
         return 1;
     }
 
-    err = MyIOConnectCallStructMethod(connect, kWriteIO, in, dataInLen, out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kWriteIO, in, dataInLen, out, &dataOutLen);
     if (err != KERN_SUCCESS) {
         return 1;
     }
@@ -325,6 +345,10 @@ void outq(unsigned long val, unsigned short addr)
 
 int iopl(int level __attribute__((unused)))
 {
+    if (darwin_connect != MACH_PORT_NULL) {
+        return 0;
+    }
+
     atexit(darwin_cleanup);
     return darwin_init();
 }
@@ -352,7 +376,7 @@ void *map_physical(uint64_t phys_addr, size_t len)
     printf("map_phys: phys %08lx, %08x\n", phys_addr, len);
 #endif
 
-    err = MyIOConnectCallStructMethod(connect, kPrepareMap, &in, dataInLen, &out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kPrepareMap, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS) {
         printf("\nError(kPrepareMap): system 0x%x subsystem 0x%x code 0x%x ",
                err_get_system(err), err_get_sub(err), err_get_code(err));
@@ -367,7 +391,7 @@ void *map_physical(uint64_t phys_addr, size_t len)
         return MAP_FAILED;
     }
 
-    err = IOConnectMapMemory(connect, 0, mach_task_self(),
+    err = IOConnectMapMemory(darwin_connect, 0, mach_task_self(),
                              &addr, &size, kIOMapAnywhere | kIOMapInhibitCache);
 
     /* Now this is odd; The above connect seems to be unfinished at the
@@ -417,7 +441,7 @@ msr_t rdmsr(int addr)
     in.core = current_logical_cpu;
     in.index = addr;
 
-    err = MyIOConnectCallStructMethod(connect, kReadMSR, &in, dataInLen, &out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kReadMSR, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS) {
         return ret;
     }
@@ -439,7 +463,7 @@ int rdcpuid(uint32_t eax, uint32_t ecx, uint32_t cpudata[4])
     in.eax = eax;
     in.ecx = ecx;
 
-    err = MyIOConnectCallStructMethod(connect, kReadCpuId, &in, dataInLen, &out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kReadCpuId, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return -1;
 
@@ -457,7 +481,7 @@ int readmem32(uint64_t addr, uint32_t* data)
     in.core = current_logical_cpu;
     in.addr = addr;
 
-    err = MyIOConnectCallStructMethod(connect, kReadMem, &in, dataInLen, &out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kReadMem, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return -1;
 
@@ -478,7 +502,7 @@ int wrmsr(int addr, msr_t msr)
     in.lo = msr.lo;
     in.hi = msr.hi;
 
-    err = MyIOConnectCallStructMethod(connect, kWriteMSR, &in, dataInLen, &out, &dataOutLen);
+    err = dhw_IOConnectCallStructMethod(kWriteMSR, &in, dataInLen, &out, &dataOutLen);
     if (err != KERN_SUCCESS)
         return 1;
 
