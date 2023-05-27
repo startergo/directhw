@@ -34,6 +34,9 @@
     #endif
 #endif
 
+//#define DOLOG kprintf
+#define DOLOG IOLog
+
 //This is defined in the compiler flags for the debug target.
 //#undef DEBUG_KEXT
 //#define DEBUG_KEXT
@@ -92,8 +95,8 @@ OSDefineMetaClassAndStructors(DirectHWService, IOService)
 
 bool DirectHWService::start(IOService * provider)
 {
-    IOLog("DirectHW: Driver v%s (compiled on %s) loaded.\n", DIRECTHW_VERSION, __DATE__);
-    IOLog("Visit http://www.coresystems.de/ for more information.\n");
+    DOLOG("DirectHW: Driver v%s (compiled on %s) loaded.\n", DIRECTHW_VERSION, __DATE__);
+    DOLOG("Visit http://www.coresystems.de/ for more information.\n");
 
     if (super::start(provider)) {
         registerService();
@@ -137,17 +140,17 @@ bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type
     bool ret;
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: initWithTask(%p, %p, %lx)\n", (void *)task, (void *)securityID, (unsigned long)type);
+        DOLOG("DirectHW: initWithTask(%p, %p, %lx)\n", (void *)task, (void *)securityID, (unsigned long)type);
     #endif
 
     if (kIOReturnSuccess != clientHasPrivilege(securityID, kIOClientPrivilegeAdministrator)) {
-        IOLog("DirectHW: Requires administrator.\n");
+        DOLOG("DirectHW: Requires administrator.\n");
         return (false);
     }
 
     ret = super::initWithTask(task, securityID, type);
     if (ret == false) {
-        IOLog("DirectHW: initWithTask failed.\n");
+        DOLOG("DirectHW: initWithTask failed.\n");
         return ret;
     }
 
@@ -155,12 +158,12 @@ bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type
 
     if (properties != NULL && properties->getObject(kIOUserClientCrossEndianKey)) {
         // A connection to this user client is being opened by a user process running using Rosetta.
-        
-        // Indicate that this user client can handle being called from cross-endian user processes by 
+
+        // Indicate that this user client can handle being called from cross-endian user processes by
         // setting its IOUserClientCrossEndianCompatible property in the I/O Registry.
         if (setProperty(kIOUserClientCrossEndianCompatibleKey, kOSBooleanTrue)) {
             fCrossEndian = true;
-            IOLog("DirectHW: fCrossEndian = true\n");
+            DOLOG("DirectHW: fCrossEndian = true\n");
         }
     }
 
@@ -208,7 +211,7 @@ bool DirectHWUserClient::start(IOService * provider)
     bool success;
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: Starting DirectHWUserClient.\n");
+        DOLOG("DirectHW: Starting DirectHWUserClient.\n");
     #endif
 
     fProvider = OSDynamicCast(DirectHWService, provider);
@@ -217,12 +220,12 @@ bool DirectHWUserClient::start(IOService * provider)
     if (success) {
         success = super::start(provider);
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Client successfully started.\n");
+            DOLOG("DirectHW: Client successfully started.\n");
         #endif
     }
     else {
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Could not start client.\n");
+            DOLOG("DirectHW: Could not start client.\n");
         #endif
     }
 
@@ -254,9 +257,9 @@ bool DirectHWUserClient::start(IOService * provider)
                 : "%eax"
             );
         #endif
-        IOLog("DirectHW: cr0 = 0x%8.8X\n", cr0);
-        IOLog("DirectHW: cr2 = 0x%8.8X\n", cr2);
-        IOLog("DirectHW: cr3 = 0x%8.8X\n", cr3);
+        DOLOG("DirectHW: cr0 = 0x%8.8X\n", cr0);
+        DOLOG("DirectHW: cr2 = 0x%8.8X\n", cr2);
+        DOLOG("DirectHW: cr3 = 0x%8.8X\n", cr3);
     #endif
 #endif
     return success;
@@ -265,7 +268,7 @@ bool DirectHWUserClient::start(IOService * provider)
 void DirectHWUserClient::stop(IOService *provider)
 {
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: Stopping client.\n");
+        DOLOG("DirectHW: Stopping client.\n");
     #endif
 
     super::stop(provider);
@@ -275,11 +278,11 @@ IOReturn DirectHWUserClient::clientClose(void)
 {
     bool success = terminate();
     if (!success) {
-        IOLog("DirectHW: Client NOT successfully closed.\n");
+        DOLOG("DirectHW: Client NOT successfully closed.\n");
     }
     else {
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Client successfully closed.\n");
+            DOLOG("DirectHW: Client successfully closed.\n");
         #endif
     }
 
@@ -329,13 +332,13 @@ DirectHWUserClient::ReadIO(iomem_t *inStruct, iomem_t *outStruct,
                         *(UInt32*)(&outStruct->data) = (UInt32)val;
                     } break;
             default:
-                IOLog("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
+                DOLOG("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
                       (long)inStruct->width, (unsigned long)inStruct->offset);
                 return kIOReturnBadArgument;
         }
 
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
+            DOLOG("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
                   (unsigned long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)outStruct->data);
         #endif
 
@@ -368,13 +371,13 @@ DirectHWUserClient::ReadIO(iomem_t *inStruct, iomem_t *outStruct,
                         *(UInt64*)(&outStruct64->data) = (UInt64)(val) | ((UInt64)(val2) << 32);
                     } break;
             default:
-                IOLog("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
+                DOLOG("DirectHW: Invalid read attempt %ld bytes at IO address %lx\n",
                       (long)inStruct64->width, (unsigned long)inStruct64->offset);
                 return kIOReturnBadArgument;
         }
-        
+
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
+            DOLOG("DirectHW: Read %ld bytes at IO address %lx (result=%lx)\n",
                   (unsigned long)inStruct64->width, (unsigned long)inStruct64->offset, (unsigned long)outStruct64->data);
         #endif
 
@@ -437,7 +440,7 @@ DirectHWUserClient::WriteIO(iomem_t *inStruct, iomem_t *outStruct,
         }
 
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
+            DOLOG("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
                   (long)inStruct->width, (unsigned long)inStruct->offset, (unsigned long)inStruct->data);
         #endif
 
@@ -449,7 +452,7 @@ DirectHWUserClient::WriteIO(iomem_t *inStruct, iomem_t *outStruct,
                         outl(inStruct->offset, val);
                     } break;
             default:
-                IOLog("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
+                DOLOG("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
                       (long)inStruct->width, (unsigned long)inStruct->offset);
                 return kIOReturnBadArgument;
         }
@@ -468,7 +471,7 @@ DirectHWUserClient::WriteIO(iomem_t *inStruct, iomem_t *outStruct,
         }
 
         #ifdef DEBUG_KEXT
-            IOLog("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
+            DOLOG("DirectHW: Write %ld bytes at IO address %lx (value=%lx)\n",
                   (long)inStruct64->width, (unsigned long)inStruct64->offset, (unsigned long)inStruct64->data);
         #endif
 
@@ -486,7 +489,7 @@ DirectHWUserClient::WriteIO(iomem_t *inStruct, iomem_t *outStruct,
                         outl(inStruct64->offset + 4, val2);
                     } break;
             default:
-                IOLog("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
+                DOLOG("DirectHW: Invalid write attempt %ld bytes at IO address %lx\n",
                       (long)inStruct64->width, (unsigned long)inStruct64->offset);
                 return kIOReturnBadArgument;
         }
@@ -554,7 +557,7 @@ DirectHWUserClient::PrepareMap(map_t *inStruct, map_t *outStruct,
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: PrepareMap 0x%16lx[0x%lx]\n", (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
+        DOLOG("DirectHW: PrepareMap 0x%16lx[0x%lx]\n", (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
     #endif
 
     return kIOReturnSuccess;
@@ -594,7 +597,7 @@ rdmsr64(uint32_t msr)
     val = (((uint64_t)hi) << 32) | ((uint64_t)lo);
 
     #ifdef DEBUG_KEXT
-        IOLog("rdmsr64(0x%.16lX) => %.16llX\n", (unsigned long)msr, (unsigned long long)val);
+        DOLOG("DirectHW: rdmsr64(0x%.16lX) => %.16llX\n", (unsigned long)msr, (unsigned long long)val);
     #endif
 
     return val;
@@ -606,7 +609,7 @@ static inline void wrmsr64(UInt32 msr, UInt64 val)
     UInt32 hi = (UInt32)(val >> 32);
 
     #ifdef DEBUG_KEXT
-        IOLog("wrmsr64(0x%.16lX, %.16llX)\n", (unsigned long)msr, (unsigned long long)val);
+        DOLOG("DirectHW: wrmsr64(0x%.16lX, %.16llX)\n", (unsigned long)msr, (unsigned long long)val);
     #endif
 
 #if defined(__i386__) || defined(__x86_64__)
@@ -691,7 +694,7 @@ DirectHWUserClient::MSRHelperFunction(void *data)
         return;
     }
 
-    IOLog("DirectHW: ReadMSRHelper %ld %ld %lx\n",
+    DOLOG("DirectHW: ReadMSRHelper %ld %ld %lx\n",
           (long)inStruct->core, (long)cpu_number(), (unsigned long)smt_mask);
 
     if (MSRData->Read) {
@@ -727,7 +730,7 @@ DirectHWUserClient::ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     if ((fProvider == NULL) || (isInactive())) {
         return kIOReturnNotAttached;
     }
-    
+
     if (fCrossEndian) {
         inStruct->core = OSSwapInt32(inStruct->core);
         inStruct->index = OSSwapInt32(inStruct->index);
@@ -752,7 +755,7 @@ DirectHWUserClient::ReadMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: ReadMSR(0x%16lx) => 0x%8lx%08lx\n",
+        DOLOG("DirectHW: ReadMSR(0x%16lx) => 0x%8lx%08lx\n",
               (unsigned long)inStruct->index, (unsigned long)outStruct->hi, (unsigned long)outStruct->lo);
     #endif
 
@@ -794,7 +797,7 @@ DirectHWUserClient::WriteMSR(msrcmd_t *inStruct, msrcmd_t *outStruct,
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: WriteMSR(0x%16lx) = 0x%8lx%08lx\n",
+        DOLOG("DirectHW: WriteMSR(0x%16lx) = 0x%8lx%08lx\n",
               (unsigned long)inStruct->index, (unsigned long)inStruct->hi, (unsigned long)inStruct->lo);
     #endif
 
@@ -954,21 +957,24 @@ DirectHWUserClient::WriteAsync(
     return ReadWrite(kWrite, inStruct, outStruct, inStructSize, outStructSize);
 }
 
-
+static int pciHostBridgeCount = -1;
 static IOPCIBridge * pciHostBridges[10] = {0,0,0,0,0,0,0,0,0,0};
+
+#ifdef __ppc__
 static UInt32 pciHostFlags[10] = {0,0,0,0,0,0,0,0,0,0};
 enum {
     pciHostEndianChecked    = 1,
     pciHostEndianSwap       = 2,
 };
-static int pciHostBridgeCount = -1;
+#endif
 
 void
 DirectHWUserClient::GetPciHostBridges1(IOService *service, OSIterator *services)
 {
-    while(service) {
+    while (service) {
         IOPCIBridge *pciBridge = OSDynamicCast(IOPCIBridge, service);
         if (pciBridge) {
+            DOLOG("DirectHW: Found PCI host %d: %s\n", pciHostBridgeCount, pciBridge->getName());
             pciHostBridges[pciHostBridgeCount++] = pciBridge;
         }
         else {
@@ -987,11 +993,55 @@ DirectHWUserClient::GetPciHostBridges1(IOService *service, OSIterator *services)
 void
 DirectHWUserClient::GetPciHostBridges(void)
 {
+    //DOLOG("[ DirectHW: GetPciHostBridges %d\n", pciHostBridgeCount);
     if (pciHostBridgeCount < 0) {
         pciHostBridgeCount = 0;
         IOService *device = getServiceRoot();
-        GetPciHostBridges1(device, 0);
+        GetPciHostBridges1(device, NULL);
     }
+    //DOLOG("] DirectHW: GetPciHostBridges\n");
+}
+
+IOPCIDevice *
+DirectHWUserClient::FindMatching(IOService *service, IOPCIAddressSpace space, OSIterator *services)
+{
+    while (service) {
+        IOPCIDevice *pciDevice;
+        IOPCIBridge *pciBridge;
+
+        pciDevice = OSDynamicCast(IOPCIDevice, service);
+        if (pciDevice) {
+            IOPCIAddressSpace regSpace;
+            regSpace.es.busNum      = pciDevice->getBusNumber();
+            regSpace.es.deviceNum   = pciDevice->getDeviceNumber();
+            regSpace.es.functionNum = pciDevice->getFunctionNumber();
+            if (regSpace.bits == space.bits) {
+                //DOLOG("DirectHW: PCIDevice %s\n", pciDevice->getName());
+                pciDevice->retain();
+                return pciDevice;
+            }
+        }
+        else {
+            pciBridge = OSDynamicCast(IOPCIBridge, service);
+        }
+
+        if (pciDevice || pciBridge) {
+            OSIterator *children = service->getChildIterator(gIOServicePlane);
+            IOService *child = OSDynamicCast(IOService, children->getNextObject());
+            pciDevice = FindMatching(child, space, children);
+            children->release();
+
+            if (pciDevice) {
+                return pciDevice;
+            }
+        }
+
+        if (!services) {
+            break;
+        }
+        service = OSDynamicCast(IOService, services->getNextObject());
+    }
+    return NULL;
 }
 
 IOReturn
@@ -1057,7 +1107,9 @@ DirectHWUserClient::ReadWrite(
     vmaddr = 0;
     unsigned int offset = 0;
     IOPCIAddressSpace space;
-    bool doswap = false;
+    bool doSwap = false;
+    bool doSkip = false;
+    IOPCIDevice *pciDevice = NULL;
 
     if (k64BitMemorySpace == params->spaceType) {
         #ifdef __ppc__
@@ -1078,47 +1130,89 @@ DirectHWUserClient::ReadWrite(
     }
     else if (kConfigSpace == params->spaceType) {
         GetPciHostBridges();
+/*
+        DOLOG("DirectHW: %s %04x:%02x:%02x.%01x\n",
+            selector == kRead ? "Read" : selector == kWrite ? "Write" : "Uknown",
+            params->address.pci.segment,
+            params->address.pci.bus,
+            params->address.pci.device,
+            params->address.pci.function
+        );
+*/
+
         if (params->address.pci.segment < pciHostBridgeCount) {
             owner = pciHostBridges[params->address.pci.segment];
         }
         if (!owner) {
             return (kIOReturnBadArgument);
         }
-        space.bits = 0;
-        if (!(pciHostFlags[params->address.pci.segment] & pciHostEndianChecked)) {
-            space.es.busNum = 0;
-            space.es.deviceNum = 0;
-            space.es.functionNum = 0;
-            space.es.registerNumExtended = 0;
-            if (owner->configRead32(space, kIOPCIConfigVendorID) == 0x6b107400) {
-                IOLog("DirectHW: U4 HT Bridge needs endian swapping.\n");
-                pciHostFlags[params->address.pci.segment] |= pciHostEndianSwap;
-            }
-            pciHostFlags[params->address.pci.segment] |= pciHostEndianChecked;
+        else {
+            //DOLOG("DirectHW: Using PCI host: %s\n", owner->getName());
         }
+
+        space.bits = 0;
         offset = params->address.pci.offset;
         space.es.busNum              = params->address.pci.bus;
         space.es.deviceNum           = params->address.pci.device;
         space.es.functionNum         = params->address.pci.function;
-        space.es.registerNumExtended = (0xF & (offset >> 8));
-        if (
-            (pciHostFlags[params->address.pci.segment] & pciHostEndianSwap)
-            && space.es.busNum == 0
-            && space.es.deviceNum == 0
+
+#ifdef __ppc__
+        // DEC bridge of B&W G3 causes machine check for non-existing devices
+        if (space.es.busNum) {
+            pciDevice = FindMatching(owner, space, NULL);
+            if (pciDevice) {
+                if (params->address.pci.offset >= 80 && params->address.pci.offset < 84) {
+                    OSData *data;
+                    UInt16 vendor;
+                    UInt16 product;
+                    if ((data = OSDynamicCast(OSData, pciDevice->getProperty("vendor-id")))) {
+                        vendor = *((UInt32 *) data->getBytesNoCopy());
+                        if (vendor == 0x1191) {
+                            if ((data = OSDynamicCast(OSData, pciDevice->getProperty("device-id")))) {
+                                product = *((UInt32 *) data->getBytesNoCopy());
+                                if (product == 0x0009) {
+                                    DOLOG("DirectHW: skip read of 1191:0009 @50\n");
+                                    doSkip = true;
+                                } // if product
+                            } // if data
+                        } // if vendor
+                    } // if data
+                } // if offset
+            } // if pcidevice
+            else {
+                //DOLOG("DirectHW: PCI device doesn't exist\n");
+                doSkip = true;
+            }
+        }
+        else if (
+            space.es.deviceNum == 0
             && space.es.functionNum == 0
         ) {
-            doswap = true;
-            //IOLog("DirectHW: changing offset from %x", offset);
-            switch ((params->bitWidth << 4) | (offset & 3)) {
-                case  0x80: offset = (offset & ~3) | 3; break;
-                case  0x81: offset = (offset & ~3) | 2; break;
-                case  0x82: offset = (offset & ~3) | 1; break;
-                case  0x83: offset = (offset & ~3) | 0; break;
-                case 0x100: offset = (offset & ~3) | 2; break;
-                case 0x102: offset = (offset & ~3) | 0; break;
+            if (!(pciHostFlags[params->address.pci.segment] & pciHostEndianChecked)) {
+                //DOLOG("DirectHW: Checking endianness of PCI host: %s\n", owner->getName());
+                if (owner->configRead32(space, kIOPCIConfigVendorID) == 0x6b107400) {
+                    DOLOG("DirectHW: U4 HT Bridge needs endian swapping.\n");
+                    pciHostFlags[params->address.pci.segment] |= pciHostEndianSwap;
+                }
+                pciHostFlags[params->address.pci.segment] |= pciHostEndianChecked;
             }
-            //IOLog(" to %x\n", offset);
+            if (pciHostFlags[params->address.pci.segment] & pciHostEndianSwap) {
+                doSwap = true;
+                //DOLOG("DirectHW: changing offset from %x", offset);
+                switch ((params->bitWidth << 4) | (offset & 3)) {
+                    case  0x80: offset = (offset & ~3) | 3; break;
+                    case  0x81: offset = (offset & ~3) | 2; break;
+                    case  0x82: offset = (offset & ~3) | 1; break;
+                    case  0x83: offset = (offset & ~3) | 0; break;
+                    case 0x100: offset = (offset & ~3) | 2; break;
+                    case 0x102: offset = (offset & ~3) | 0; break;
+                }
+                //DOLOG(" to %x\n", offset);
+            }
         }
+#endif
+
+        space.es.registerNumExtended = (0xF & (offset >> 8));
     }
 
     switch (selector) {
@@ -1153,15 +1247,18 @@ DirectHWUserClient::ReadWrite(
             else if (kConfigSpace == params->spaceType) {
                 switch (params->bitWidth) {
                     case 8:
-                        owner->configWrite8(space, offset, params->value);
+                        //DOLOG("DirectHW: Do write 8 using PCI host: %s\n", owner->getName());
+                        if (!doSkip) owner->configWrite8(space, offset, params->value);
                         ret = kIOReturnSuccess;
                         break;
                     case 16:
-                        owner->configWrite16(space, offset, params->value);
+                        //DOLOG("DirectHW: Do write 16 using PCI host: %s\n", owner->getName());
+                        if (!doSkip) owner->configWrite16(space, offset, params->value);
                         ret = kIOReturnSuccess;
                         break;
                     case 32:
-                        owner->configWrite32(space, offset, static_cast<uint32_t>(params->value));
+                        //DOLOG("DirectHW: Do write 32 using PCI host: %s\n", owner->getName());
+                        if (!doSkip) owner->configWrite32(space, offset, static_cast<uint32_t>(params->value));
                         ret = kIOReturnSuccess;
                         break;
                     default:
@@ -1197,22 +1294,25 @@ DirectHWUserClient::ReadWrite(
             else if (kConfigSpace == params->spaceType) {
                 switch (params->bitWidth) {
                     case 8:
-                        params->value = owner->configRead8(space, offset);
+                        //DOLOG("DirectHW: Do read 8 using PCI host: %s\n", owner->getName());
+                        params->value = doSkip ? (UInt8)-1 : owner->configRead8(space, offset);
                         ret = kIOReturnSuccess;
                         break;
                     case 16:
-                        params->value = doswap ? OSSwapInt16(owner->configRead16(space, offset)) : owner->configRead16(space, offset);
+                        //DOLOG("DirectHW: Do read 16 using PCI host: %s\n", owner->getName());
+                        params->value = doSkip ? (UInt16)-1 : doSwap ? OSSwapInt16(owner->configRead16(space, offset)) : owner->configRead16(space, offset);
                         ret = kIOReturnSuccess;
                         break;
                     case 32:
-                        params->value = doswap ? OSSwapInt32(owner->configRead32(space, offset)) : owner->configRead32(space, offset);
+                        //DOLOG("DirectHW: Do read 32 using PCI host: %s\n", owner->getName());
+                        params->value = doSkip ? (UInt32)-1 : doSwap ? OSSwapInt32(owner->configRead32(space, offset)) : owner->configRead32(space, offset);
                         ret = kIOReturnSuccess;
                         break;
                     default:
                         break;
                 }
             }
-            
+
             if (fCrossEndian) {
                 params->value = OSSwapInt64(params->value);
             }
@@ -1222,7 +1322,15 @@ DirectHWUserClient::ReadWrite(
             break;
     }
 
-    if (map) map->release();
+    if (pciDevice) {
+        //DOLOG("DirectHW: Done with pciDevice\n");
+        pciDevice->release();
+    }
+
+    if (map) {
+        DOLOG("DirectHW: Do map release\n");
+        map->release();
+    }
 
     return (ret);
 }
@@ -1234,24 +1342,24 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
     #ifndef DEBUG_KEXT
         ((void)flags);
     #else
-        IOLog("DirectHW: clientMemoryForType(%lx, %p, %p)\n",
+        DOLOG("DirectHW: clientMemoryForType(%lx, %p, %p)\n",
               (unsigned long)type, (void *)flags, (void *)memory);
     #endif
 
     if (type != 0) {
-        IOLog("DirectHW: Unknown mapping type %lx.\n", (unsigned long)type);
+        DOLOG("DirectHW: Unknown mapping type %lx.\n", (unsigned long)type);
 
         return kIOReturnUnsupported;
     }
 
     if ((LastMapAddr == 0) && (LastMapSize == 0)) {
-        IOLog("DirectHW: No PrepareMap called.\n");
+        DOLOG("DirectHW: No PrepareMap called.\n");
 
         return kIOReturnNotAttached;
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: Mapping physical 0x%16lx[0x%lx]\n",
+        DOLOG("DirectHW: Mapping physical 0x%16lx[0x%lx]\n",
               (unsigned long)LastMapAddr, (unsigned long)LastMapSize);
     #endif
 
@@ -1264,7 +1372,7 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
     LastMapSize = 0;
 
     if (newmemory == NULL) {
-        IOLog("DirectHW: Could not map memory!\n");
+        DOLOG("DirectHW: Could not map memory!\n");
 
         return kIOReturnNotOpen;
     }
@@ -1276,7 +1384,7 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
     }
 
     #ifdef DEBUG_KEXT
-        IOLog("DirectHW: Mapping succeeded.\n");
+        DOLOG("DirectHW: Mapping succeeded.\n");
     #endif
 
     return kIOReturnSuccess;

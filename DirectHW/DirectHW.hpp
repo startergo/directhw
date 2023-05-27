@@ -21,7 +21,7 @@
 #include "MacOSMacros.h"
 
 #include <IOKit/IOLib.h>
-#include <IOKit/IOService.h>
+#include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IOKitKeys.h>
 #include <IOKit/IOMemoryDescriptor.h>
@@ -297,6 +297,7 @@ private:
 
     void GetPciHostBridges1(IOService *service, OSIterator *services);
     void GetPciHostBridges(void);
+	IOPCIDevice * FindMatching(IOService *service, IOPCIAddressSpace space, OSIterator *services);
 };
 
 #ifndef INVALID_MSR_LO
