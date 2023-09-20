@@ -63,9 +63,9 @@ libs: DirectHW.c DirectHW.h
 
 install:
 	sudo mkdir -p /usr/local/lib
-	sudo rm -R $(extensions)/DirectHW.kext || :
+	[[ -e $(extensions)/DirectHW.kext ]] && sudo rm -R $(extensions)/DirectHW.kext || :
 	sudo cp -R $(build)/Release/DirectHW.kext $(extensions)/
-	sudo rm -R /Library/Frameworks/DirectHW.framework || :
+	[[ -e /Library/Frameworks/DirectHW.framework ]] && sudo rm -R /Library/Frameworks/DirectHW.framework || :
 	sudo cp -R $(build)/Release/DirectHW.framework /Library/Frameworks/
 	sudo cp $(build)/Release/libDirectHW.a /usr/local/lib/
 	sudo cp $(build)/Release/libDirectHW.dylib /usr/local/lib/
