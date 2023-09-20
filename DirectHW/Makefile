@@ -19,7 +19,7 @@
 all: main libs
 
 is11   := $(shell bc <<< "$${OSTYPE\#darwin} >= 20")
-is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} >= 10 && $${OSTYPE\#darwin} < 20")
+is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} >= 10 && $${OSTYPE\#darwin} < 17") # change 17 (10.13) to lowest version that can't build the 10.6 project
 is10_5 := $(shell bc <<< "$${OSTYPE\#darwin} >= 9  && $${OSTYPE\#darwin} < 10")
 is10_4 := $(shell bc <<< "                            $${OSTYPE\#darwin} <  9")
 
@@ -29,25 +29,33 @@ proj := DirectHW.xcodeproj
 build := build
 extensions := /Library/Extensions
 debugsym :=
+sdk := -sdk macosx
+deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 
 ifeq ($(is10_6), 1)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.6
+	sdk := 
+	deploy := 
 endif
 ifeq ($(is10_5), 1)
 	proj := DirectHW10.5.xcodeproj
 	build := build/build10.5
 	extensions := /System/Library/Extensions
 	debugsym := -g
+	sdk := 
+	deploy := 
 endif
 ifeq ($(is10_4), 1)
 	proj := DirectHW10.4.xcodeproj
 	build := build/build10.4
 	extensions := /System/Library/Extensions
+	sdk := 
+	deploy := 
 endif
 
 main:
-	xcodebuild -alltargets -project $(proj)
+	xcodebuild -alltargets -project $(proj) $(sdk) $(deploy)
 
 libs: DirectHW.c DirectHW.h
 	$(CC) DirectHW.c -dynamiclib -framework IOKit -o $(build)/Release/libDirectHW.dylib $(debugsym)
