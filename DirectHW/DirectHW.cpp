@@ -1007,7 +1007,7 @@ DirectHWUserClient::FindMatching(IOService *service, IOPCIAddressSpace space, OS
 {
     while (service) {
         IOPCIDevice *pciDevice;
-        IOPCIBridge *pciBridge;
+        IOPCIBridge *pciBridge = NULL;
 
         pciDevice = OSDynamicCast(IOPCIDevice, service);
         if (pciDevice) {
