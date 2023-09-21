@@ -343,14 +343,19 @@ void outq(unsigned long val, unsigned short addr)
 }
 #endif
 
-int iopl(int level __attribute__((unused)))
+int iopl(int level)
 {
-    if (darwin_connect != MACH_PORT_NULL) {
+    if (level) {
+        if (darwin_connect != MACH_PORT_NULL) {
+            return 0;
+        }
+        atexit(darwin_cleanup);
+        return darwin_init();
+    }
+    else {
+        darwin_cleanup();
         return 0;
     }
-
-    atexit(darwin_cleanup);
-    return darwin_init();
 }
 
 void *map_physical(uint64_t phys_addr, size_t len)
