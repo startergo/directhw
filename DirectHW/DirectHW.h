@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <IOKit/IOKitLib.h>
 
-int iopl(int unused);
+int iopl(int level);
 
 unsigned char inb(unsigned short addr);
 unsigned short inw(unsigned short addr);
