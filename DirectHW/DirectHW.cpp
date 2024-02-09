@@ -174,6 +174,7 @@ bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type
 IOExternalAsyncMethod *DirectHWUserClient::getAsyncTargetAndMethodForIndex(IOService ** target, UInt32 index)
 {
     if (target == NULL) {
+        DOLOG("DirectHW: getAsyncTargetAndMethodForIndex no target\n");
         return NULL;
     }
 
@@ -184,6 +185,7 @@ IOExternalAsyncMethod *DirectHWUserClient::getAsyncTargetAndMethodForIndex(IOSer
         return (IOExternalAsyncMethod *) & fAsyncMethods[index];
     }
 
+    DOLOG("DirectHW: getAsyncTargetAndMethodForIndex index %d out of range %d\n", (int)index, (int)kNumberOfMethods);
     *target = NULL;
     return NULL;
 }
@@ -202,6 +204,7 @@ IOExternalMethod *DirectHWUserClient::getTargetAndMethodForIndex(IOService ** ta
         return (IOExternalMethod *) & fMethods[index];
     }
 
+    DOLOG("DirectHW: getTargetAndMethodForIndex index %d out of range %d\n", (int)index, (int)kNumberOfMethods);
     *target = NULL;
     return NULL;
 }
@@ -999,7 +1002,7 @@ DirectHWUserClient::GetPciHostBridges(void)
         IOService *device = getServiceRoot();
         GetPciHostBridges1(device, NULL);
     }
-    //DOLOG("] DirectHW: GetPciHostBridges\n");
+    //DOLOG("] DirectHW: GetPciHostBridges %d\n", pciHostBridgeCount);
 }
 
 IOPCIDevice *
@@ -1130,13 +1133,16 @@ DirectHWUserClient::ReadWrite(
     }
     else if (kConfigSpace == params->spaceType) {
         GetPciHostBridges();
+
 /*
-        DOLOG("DirectHW: %s %04x:%02x:%02x.%01x\n",
-            selector == kRead ? "Read" : selector == kWrite ? "Write" : "Uknown",
+        DOLOG("DirectHW: %s %04x:%02x:%02x.%01x @%02x = %llx\n",
+            selector == kRead ? "Read" : selector == kWrite ? "Write" : "Unknown",
             params->address.pci.segment,
             params->address.pci.bus,
             params->address.pci.device,
-            params->address.pci.function
+            params->address.pci.function,
+            params->address.pci.offset,
+            params->value
         );
 */
 
@@ -1144,6 +1150,13 @@ DirectHWUserClient::ReadWrite(
             owner = pciHostBridges[params->address.pci.segment];
         }
         if (!owner) {
+            DOLOG("DirectHW: %s owner not found for %04x:%02x:%02x.%01x\n",
+                selector == kRead ? "Read" : selector == kWrite ? "Write" : "Uknown",
+                params->address.pci.segment,
+                params->address.pci.bus,
+                params->address.pci.device,
+                params->address.pci.function
+            );
             return (kIOReturnBadArgument);
         }
         else {
@@ -1152,12 +1165,11 @@ DirectHWUserClient::ReadWrite(
 
         space.bits = 0;
         offset = params->address.pci.offset;
-        space.es.busNum              = params->address.pci.bus;
-        space.es.deviceNum           = params->address.pci.device;
-        space.es.functionNum         = params->address.pci.function;
+        space.es.busNum      = params->address.pci.bus;
+        space.es.deviceNum   = params->address.pci.device;
+        space.es.functionNum = params->address.pci.function;
 
 #ifdef __ppc__
-        // DEC bridge of B&W G3 causes machine check for non-existing devices
         if (space.es.busNum) {
             pciDevice = FindMatching(owner, space, NULL);
             if (pciDevice) {
@@ -1171,7 +1183,8 @@ DirectHWUserClient::ReadWrite(
                             if ((data = OSDynamicCast(OSData, pciDevice->getProperty("device-id")))) {
                                 product = *((UInt32 *) data->getBytesNoCopy());
                                 if (product == 0x0009) {
-                                    DOLOG("DirectHW: skip read of 1191:0009 @50\n");
+                                    // 01:04.0 SCSI storage controller [0100]: Artop Electronic Corp ATP865 [1191:0009] (rev 03)
+                                    DOLOG("DirectHW: skip read of 1191:0009 @%02x\n", params->address.pci.offset);
                                     doSkip = true;
                                 } // if product
                             } // if data
@@ -1180,6 +1193,7 @@ DirectHWUserClient::ReadWrite(
                 } // if offset
             } // if pcidevice
             else {
+                // DEC bridge of B&W G3 causes machine check for non-existing devices
                 //DOLOG("DirectHW: PCI device doesn't exist\n");
                 doSkip = true;
             }
@@ -1247,17 +1261,17 @@ DirectHWUserClient::ReadWrite(
             else if (kConfigSpace == params->spaceType) {
                 switch (params->bitWidth) {
                     case 8:
-                        //DOLOG("DirectHW: Do write 8 using PCI host: %s\n", owner->getName());
+                        //DOLOG("DirectHW: Do write 8 bits (0x%02llx) using PCI host: %s\n", params->value, owner->getName());
                         if (!doSkip) owner->configWrite8(space, offset, params->value);
                         ret = kIOReturnSuccess;
                         break;
                     case 16:
-                        //DOLOG("DirectHW: Do write 16 using PCI host: %s\n", owner->getName());
+                        //DOLOG("DirectHW: Do write 16 bits (0x%04llx) using PCI host: %s\n", params->value, owner->getName());
                         if (!doSkip) owner->configWrite16(space, offset, params->value);
                         ret = kIOReturnSuccess;
                         break;
                     case 32:
-                        //DOLOG("DirectHW: Do write 32 using PCI host: %s\n", owner->getName());
+                        //DOLOG("DirectHW: Do write 32 bits (0x%08llx) using PCI host: %s\n", params->value, owner->getName());
                         if (!doSkip) owner->configWrite32(space, offset, static_cast<uint32_t>(params->value));
                         ret = kIOReturnSuccess;
                         break;
