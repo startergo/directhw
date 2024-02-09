@@ -1061,30 +1061,13 @@ DirectHWUserClient::ReadWrite(
     void                       * vmaddr;
     IOPCIBridge                * owner = NULL;
 
-    switch (selector) {
-        case kWrite:
-            if (inStructSize != sizeof(Parameters)) return (kIOReturnBadArgument);
-
-            params = (typeof(params)) inStruct;
-            if (outStructSize != NULL) {
-                *outStructSize = 0;
-            }
-            break;
-
-        case kRead:
-            if (inStructSize  != sizeof(Parameters)) return (kIOReturnBadArgument);
-            if (outStructSize != NULL) {
-                *outStructSize = sizeof(Parameters);
-            }
-
-            bcopy(inStruct, outStruct, sizeof(Parameters));
-            params = (typeof(params)) outStruct;
-            break;
-
-        default:
-            return (kIOReturnBadArgument);
-            break;
+    if (inStructSize != sizeof(Parameters)) return (kIOReturnBadArgument);
+    if (outStructSize != NULL) {
+        *outStructSize = sizeof(Parameters);
     }
+
+    bcopy(inStruct, outStruct, sizeof(Parameters));
+    params = outStruct;
 
     if (fCrossEndian) {
         params->options = OSSwapInt32(params->options);
