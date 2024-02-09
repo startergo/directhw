@@ -1173,7 +1173,10 @@ DirectHWUserClient::ReadWrite(
         if (space.es.busNum) {
             pciDevice = FindMatching(owner, space, NULL);
             if (pciDevice) {
-                if (params->address.pci.offset >= 80 && params->address.pci.offset < 84) {
+                if (
+                    (params->address.pci.offset & 0xff) >= 0x50 &&
+                    (params->address.pci.offset & 0xff) < 0x54
+                ) {
                     OSData *data;
                     UInt16 vendor;
                     UInt16 product;
