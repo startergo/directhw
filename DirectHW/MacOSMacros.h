@@ -18,8 +18,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifdef MAC_OS_X_VERSION_SDK
+#define MAC_OS_X_VERSION_MAX_ALLOWED MAC_OS_X_VERSION_SDK
+#else
 #include <TargetConditionals.h>
 #include <AvailabilityMacros.h>
+#endif
 
 #ifdef AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER
     #undef MAC_OS_X_VERSION_SDK
@@ -61,8 +65,10 @@
 #else
     #error other architecture
 #endif
-    
-#if MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_4
+
+#if MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_3
+    #warning SDK 10.3
+#elif MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_4
     #warning SDK 10.4
 #elif MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_5
     #warning SDK 10.5

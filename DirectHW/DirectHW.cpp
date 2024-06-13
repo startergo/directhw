@@ -49,7 +49,7 @@
 #endif
 
 #if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
-    #define kIOUCVariableStructureSize -1
+    #define kIOUCVariableStructureSize ((IOByteCount)-1)
     #define getAddress getVirtualAddress
 #endif
 
@@ -156,6 +156,7 @@ bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type
 
     fCrossEndian = false;
 
+#if MAC_OS_X_VERSION_SDK >= MAC_OS_X_VERSION_10_4
     if (properties != NULL && properties->getObject(kIOUserClientCrossEndianKey)) {
         // A connection to this user client is being opened by a user process running using Rosetta.
 
@@ -166,6 +167,7 @@ bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type
             DOLOG("DirectHW: fCrossEndian = true\n");
         }
     }
+#endif
 
     fTask = task;
     return ret;
@@ -628,7 +630,7 @@ void
 DirectHWUserClient::CPUIDHelperFunction(void *data)
 {
     CPUIDHelper * cpuData = (CPUIDHelper *)data;
-    cpuData->out->core = -1;
+    cpuData->out->core = (UInt32)-1;
     if (cpuData->in->core != cpu_number())
         return;
     cpuid(cpuData->in->eax, cpuData->in->ecx, cpuData->out->cpudata);
@@ -641,7 +643,7 @@ void
 DirectHWUserClient::ReadMemHelperFunction(void *data)
 {
     ReadMemHelper * memData = (ReadMemHelper *)data;
-    memData->out->core = -1;
+    memData->out->core = (UInt32)-1;
     if (memData->in->core != cpu_number())
         return;
     uint32_t out;
@@ -703,7 +705,7 @@ DirectHWUserClient::MSRHelperFunction(void *data)
     if (MSRData->Read) {
         uint64_t ret = rdmsr64(inStruct->index);
         outStruct->lo = (uint32_t)ret;
-        outStruct->hi = ret >> 32;
+        outStruct->hi = (uint32_t)(ret >> 32);
     }
     else {
         wrmsr64(inStruct->index, ((uint64_t)inStruct->hi << 32) | inStruct->lo);
@@ -1015,9 +1017,10 @@ DirectHWUserClient::FindMatching(IOService *service, IOPCIAddressSpace space, OS
         pciDevice = OSDynamicCast(IOPCIDevice, service);
         if (pciDevice) {
             IOPCIAddressSpace regSpace;
-            regSpace.es.busNum      = pciDevice->getBusNumber();
-            regSpace.es.deviceNum   = pciDevice->getDeviceNumber();
-            regSpace.es.functionNum = pciDevice->getFunctionNumber();
+            regSpace.bits = 0;
+            regSpace.s.busNum      = pciDevice->getBusNumber();
+            regSpace.s.deviceNum   = pciDevice->getDeviceNumber();
+            regSpace.s.functionNum = pciDevice->getFunctionNumber();
             if (regSpace.bits == space.bits) {
                 //DOLOG("DirectHW: PCIDevice %s\n", pciDevice->getName());
                 pciDevice->retain();
@@ -1148,12 +1151,12 @@ DirectHWUserClient::ReadWrite(
 
         space.bits = 0;
         offset = params->address.pci.offset;
-        space.es.busNum      = params->address.pci.bus;
-        space.es.deviceNum   = params->address.pci.device;
-        space.es.functionNum = params->address.pci.function;
+        space.s.busNum      = params->address.pci.bus;
+        space.s.deviceNum   = params->address.pci.device;
+        space.s.functionNum = params->address.pci.function;
 
 #ifdef __ppc__
-        if (space.es.busNum) {
+        if (space.s.busNum) {
             pciDevice = FindMatching(owner, space, NULL);
             if (pciDevice) {
                 if (
@@ -1185,8 +1188,8 @@ DirectHWUserClient::ReadWrite(
             }
         }
         else if (
-            space.es.deviceNum == 0
-            && space.es.functionNum == 0
+            space.s.deviceNum == 0
+            && space.s.functionNum == 0
         ) {
             if (!(pciHostFlags[params->address.pci.segment] & pciHostEndianChecked)) {
                 //DOLOG("DirectHW: Checking endianness of PCI host: %s\n", owner->getName());
@@ -1212,7 +1215,9 @@ DirectHWUserClient::ReadWrite(
         }
 #endif
 
+#if MAC_OS_X_VERSION_SDK >= MAC_OS_X_VERSION_10_4
         space.es.registerNumExtended = (0xF & (offset >> 8));
+#endif
     }
 
     switch (selector) {
@@ -1364,7 +1369,7 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
     #endif
 
     if (memory != NULL) {
-        newmemory = IOMemoryDescriptor::withPhysicalAddress(LastMapAddr, LastMapSize, kIODirectionIn);
+        newmemory = IOMemoryDescriptor::withPhysicalAddress((IOPhysicalAddress)LastMapAddr, (IOByteCount)LastMapSize, kIODirectionIn);
     }
 
     /* Reset mapping to zero */
