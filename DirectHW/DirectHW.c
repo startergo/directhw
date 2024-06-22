@@ -43,55 +43,7 @@
 #define err_get_code(err)   ((err)&0x3fff)
 #endif
 
-enum {
-    kReadIO,
-    kWriteIO,
-    kPrepareMap,
-    kReadMSR,
-    kWriteMSR,
-    kReadCpuId,
-    kReadMem,
-    kRead,
-    kWrite,
-    kNumberOfMethods
-};
-
-typedef struct {
-    UInt32 offset;
-    UInt32 width;
-    UInt32 data; // this field is 1 or 2 or 4 bytes starting at the lowest address
-} iomem_t;
-
-typedef struct {
-    UInt64 offset;
-    UInt64 width;
-    UInt64 data; // this field is 1 or 2 or 4 or 8 bytes starting at the lowest address
-} iomem64_t;
-
-typedef struct {
-    UInt64 addr;
-    UInt64 size;
-} map_t;
-
-typedef struct {
-    UInt32 core;
-    UInt32 index;
-    UInt32 hi;
-    UInt32 lo;
-} msrcmd_t;
-
-typedef struct {
-    uint32_t core;
-    uint32_t eax;
-    uint32_t ecx;
-    uint32_t cpudata[4];
-} cpuid_t;
-
-typedef struct {
-    uint32_t core;
-    uint64_t addr;
-    uint32_t data;
-} readmem_t;
+#include "DirectHWShared.h"
 
 static io_connect_t darwin_connect = MACH_PORT_NULL;
 static io_service_t iokit_uc;
@@ -518,4 +470,94 @@ int logical_cpu_select(int cpu)
 {
     current_logical_cpu = cpu;
     return current_logical_cpu;
+}
+
+int allocate_physically_contiguous_32(size_t len, uint32_t *phys, void* *user, uint32_t *type)
+{
+    kern_return_t err;
+
+    MemParams in;
+    MemParams out;
+    size_t dataInLen = sizeof(MemParams);
+    size_t dataOutLen = sizeof(MemParams);
+
+    in.allocOptions = kPhysContig;
+    in.size = len;
+    in.physMask = 0xfffff000; // 32-bit page aligned
+    in.mapOptions = kIOMapInhibitCache;
+
+    err = dhw_IOConnectCallStructMethod(kAllocatePhysicalMemory, &in, dataInLen, &out, &dataOutLen);
+    if (err != KERN_SUCCESS) {
+        printf("\nError(kAllocatePhysicalMemory): system 0x%x subsystem 0x%x code 0x%x\n",
+               err_get_system(err), err_get_sub(err), err_get_code(err));
+        return -1;
+    }
+
+    if (phys) *phys = (UInt32)out.physAddr;
+#ifdef __LP64__
+    if (user) *user = (void*)out.userAddr;
+#else
+    if (user) *user = (void*)(UInt32)out.userAddr;
+#endif
+    if (type) *type = out.memoryType;
+    return 0;
+}
+
+int unallocate_mem(uint32_t type)
+{
+    kern_return_t err;
+
+    MemParams in;
+    MemParams out;
+    size_t dataInLen = sizeof(MemParams);
+    size_t dataOutLen = sizeof(MemParams);
+
+    in.memoryType = type;
+
+    err = dhw_IOConnectCallStructMethod(kUnallocatePhysicalMemory, &in, dataInLen, &out, &dataOutLen);
+    if (err != KERN_SUCCESS) {
+        printf("\nError(kUnallocatePhysicalMemory): system 0x%x subsystem 0x%x code 0x%x\n",
+               err_get_system(err), err_get_sub(err), err_get_code(err));
+        return -1;
+    }
+    return 0;
+}
+
+void *map_physical_v2(uint64_t phys_addr, size_t len)
+{
+    kern_return_t err;
+
+    MemParams in;
+    MemParams out;
+    size_t dataInLen = sizeof(MemParams);
+    size_t dataOutLen = sizeof(MemParams);
+
+    in.allocOptions = kUsePhys;
+    in.physAddr = phys_addr;
+    in.size = len;
+    in.mapOptions = kIOMapInhibitCache;
+
+#ifdef DEBUG
+    printf("map_phys: phys %08llx, %08zx\n", phys_addr, len);
+#endif
+
+    err = dhw_IOConnectCallStructMethod(kAllocatePhysicalMemory, &in, dataInLen, &out, &dataOutLen);
+    if (err != KERN_SUCCESS) {
+        printf("\nError(kPrepareMap): system 0x%x subsystem 0x%x code 0x%x ",
+               err_get_system(err), err_get_sub(err), err_get_code(err));
+
+        printf("physical 0x%16lx[0x%lx]\n", (unsigned long)phys_addr, (unsigned long)len);
+
+        return MAP_FAILED;
+    }
+
+#ifdef DEBUG
+    printf("map_phys: virt %16lx, %16llx\n", out.userAddr, out.size);
+#endif /* DEBUG */
+
+#ifdef __LP64__
+    return (void *)out.userAddr;
+#else
+    return (void *)(UInt32)out.userAddr;
+#endif
 }

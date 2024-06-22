@@ -42,6 +42,8 @@ int readmem32(uint64_t addr, uint32_t* data);
 
 void *map_physical(uint64_t phys_addr, size_t len);
 void unmap_physical(void *virt_addr, size_t len);
+int allocate_physically_contiguous_32(size_t len, uint32_t *phys, void* *user, uint32_t *type);
+int unallocate_mem(uint32_t type);
 
 typedef struct {
     uint32_t hi;
