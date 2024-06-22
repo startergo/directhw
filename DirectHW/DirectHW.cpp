@@ -17,6 +17,7 @@
 
 #include "DirectHW.hpp"
 #include <IOKit/pci/IOPCIBridge.h>
+#include <IOKit/IOBufferMemoryDescriptor.h>
 
 #if defined(__i386__) || defined(__x86_64__)
     #if 0
@@ -44,6 +45,10 @@
 #undef  super
 #define super IOService
 
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_6
+    extern vm_size_t        page_size;
+#endif
+
 #if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_5
     #define kIOMemoryMapperNone kIOMemoryDontMap
 #endif
@@ -51,6 +56,17 @@
 #if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
     #define kIOUCVariableStructureSize ((IOByteCount)-1)
     #define getAddress getVirtualAddress
+#endif
+
+#if MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_3
+    #define snprintf(str, len, format, ...) sprintf(str, len, format, VA_ARGS);
+#endif
+
+#ifndef kIOUserClientCrossEndianKey
+    #define kIOUserClientCrossEndianKey "IOUserClientCrossEndian"
+#endif
+#ifndef kIOUserClientCrossEndianCompatibleKey
+    #define kIOUserClientCrossEndianCompatibleKey "IOUserClientCrossEndianCompatible"
 #endif
 
 extern "C"
@@ -121,6 +137,8 @@ const IOExternalAsyncMethod DirectHWUserClient::fAsyncMethods[kNumberOfMethods] 
     {0, (IOAsyncMethod) & DirectHWUserClient::ReadMemAsync, kIOUCStructIStructO, sizeof(readmem_t), sizeof(readmem_t)},
     {0, (IOAsyncMethod) & DirectHWUserClient::ReadAsync, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
     {0, (IOAsyncMethod) & DirectHWUserClient::WriteAsync, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::AllocatePhysicalMemoryAsync, kIOUCStructIStructO, sizeof(MemParams), sizeof(MemParams)},
+    {0, (IOAsyncMethod) & DirectHWUserClient::UnallocatePhysicalMemoryAsync, kIOUCStructIStructO, sizeof(MemParams), sizeof(MemParams)},
 };
 
 const IOExternalMethod DirectHWUserClient::fMethods[kNumberOfMethods] = {
@@ -133,6 +151,8 @@ const IOExternalMethod DirectHWUserClient::fMethods[kNumberOfMethods] = {
     {0, (IOMethod) & DirectHWUserClient::ReadMem, kIOUCStructIStructO, sizeof(readmem_t), sizeof(readmem_t)},
     {0, (IOMethod) & DirectHWUserClient::Read, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
     {0, (IOMethod) & DirectHWUserClient::Write, kIOUCStructIStructO, sizeof(Parameters), sizeof(Parameters)},
+    {0, (IOMethod) & DirectHWUserClient::AllocatePhysicalMemory, kIOUCStructIStructO, sizeof(MemParams), sizeof(MemParams)},
+    {0, (IOMethod) & DirectHWUserClient::UnallocatePhysicalMemory, kIOUCStructIStructO, sizeof(MemParams), sizeof(MemParams)},
 };
 
 bool DirectHWUserClient::initWithTask(task_t task, void *securityID, UInt32 type, OSDictionary* properties)
@@ -219,6 +239,7 @@ bool DirectHWUserClient::start(IOService * provider)
         DOLOG("DirectHW: Starting DirectHWUserClient.\n");
     #endif
 
+    fNextMemoryType = 0;
     fProvider = OSDynamicCast(DirectHWService, provider);
     success = (fProvider != NULL);
 
@@ -227,6 +248,12 @@ bool DirectHWUserClient::start(IOService * provider)
         #ifdef DEBUG_KEXT
             DOLOG("DirectHW: Client successfully started.\n");
         #endif
+
+        fMemoryTypes = OSDictionary::withCapacity(8);
+        if (!fMemoryTypes) {
+            DOLOG("DirectHW: Could not create memory types dictionary.\n");
+            success = false;
+        }
     }
     else {
         #ifdef DEBUG_KEXT
@@ -275,6 +302,42 @@ void DirectHWUserClient::stop(IOService *provider)
     #ifdef DEBUG_KEXT
         DOLOG("DirectHW: Stopping client.\n");
     #endif
+
+    if (fMemoryTypes) {
+        OSCollectionIterator *memoryTypeIterator = OSCollectionIterator::withCollection(fMemoryTypes);
+        if (memoryTypeIterator) {
+            const OSSymbol *key;
+/*
+            // list all memorymaps
+            while ((key = (const OSSymbol *) memoryTypeIterator->getNextObject()))
+                DOLOG("• memory type %s\n", key->getCStringNoCopy());
+            memoryTypeIterator->reset();
+*/
+            unsigned int numItems = fMemoryTypes->getCount();
+            if (numItems > 0)
+                DOLOG("DirectHW: Cleaning up %d memory types\n", numItems);
+
+            while ((key = (const OSSymbol *) memoryTypeIterator->getNextObject())) {
+                UInt32 memoryType;
+                int numLen;
+                const char* numStr = key->getCStringNoCopy();
+
+                // the kernel version of sscanf only works with %d and returns number of parsed characters instead of number of parsed arguments
+                if ((numLen = sscanf(numStr, "%d", &memoryType)) == 1) {
+                    UnallocatePhysicalMemoryType(memoryType);
+                    memoryTypeIterator->reset(); // this is needed after removing an object otherwise the loop stops
+                }
+                else
+                    DOLOG("DirectHW: Invalid memory type: %s, numCharsParsed:%d\n", numStr, numLen);
+            }
+            memoryTypeIterator->release();
+        }
+        else
+            DOLOG("DirectHW: could not create fMemoryTypes iterator\n");
+
+        fMemoryTypes->release();
+        fMemoryTypes = NULL;
+    }
 
     super::stop(provider);
 }
@@ -862,7 +925,9 @@ DirectHWUserClient::ReadCpuId(cpuid_t * inStruct, cpuid_t * outStruct,
     mp_rendezvous(NULL, (void (*)(void *))CPUIDHelperFunction, NULL,
         (void *)&cpuidData);
 
-    *outStructSize = sizeof(cpuid_t);
+    if (outStructSize != NULL) {
+        *outStructSize = sizeof(cpuid_t);
+    }
 
     if (outStruct->core != inStruct->core)
         return kIOReturnIOError;
@@ -911,7 +976,9 @@ DirectHWUserClient::ReadMem(readmem_t * inStruct, readmem_t * outStruct,
     ReadMemHelper memData = { inStruct, outStruct };
     mp_rendezvous(NULL, (void (*)(void *))ReadMemHelperFunction, NULL, (void *)&memData);
 
-    *outStructSize = sizeof(readmem_t);
+    if (outStructSize != NULL) {
+        *outStructSize = sizeof(readmem_t);
+    }
 
     if (outStruct->core != inStruct->core)
         return kIOReturnIOError;
@@ -1111,7 +1178,7 @@ DirectHWUserClient::ReadWrite(
             md->release();
         }
         if (!map) return (kIOReturnVMError);
-        vmaddr = (void *)(uintptr_t) map->getAddress();
+        vmaddr = (void *)map->getAddress();
     }
     else if (kConfigSpace == params->spaceType) {
         GetPciHostBridges();
@@ -1390,3 +1457,600 @@ IOReturn DirectHWUserClient::clientMemoryForType(UInt32 type, UInt32 *flags, IOM
 
     return kIOReturnSuccess;
 }
+
+IOReturn
+DirectHWUserClient::AllocatePhysicalMemoryAsync(OSAsyncReference asyncRef,
+                                        MemParams * inStruct, MemParams * outStruct,
+                                        IOByteCount inStructSize,
+                                        IOByteCount * outStructSize)
+{
+    ((void)asyncRef);
+    return AllocatePhysicalMemory(inStruct, outStruct, inStructSize, outStructSize);
+}
+
+IOReturn
+DirectHWUserClient::UnallocatePhysicalMemoryAsync(OSAsyncReference asyncRef,
+                                        MemParams * inStruct, MemParams * outStruct,
+                                        IOByteCount inStructSize,
+                                        IOByteCount * outStructSize)
+{
+    ((void)asyncRef);
+    return UnallocatePhysicalMemory(inStruct, outStruct, inStructSize, outStructSize);
+}
+
+#define check_memdesc() \
+    do { \
+        if (!memDesc) { \
+            DOLOG("DirectHW: Could not create memory descriptor.\n"); \
+            result = kIOReturnNoResources; \
+            goto bail; \
+        } \
+        if (0) DOLOG("DirectHW: 1 memDesc->getRetainCount:%d\n", memDesc->getRetainCount()); \
+    } while(0)
+
+#define check_memmapkernel() \
+    do { \
+        if (!memMapKernel) { \
+            DOLOG("DirectHW: Could not make mapping in kernel space (memDesc:%p)\n", memDesc); \
+            result = kIOReturnVMError; \
+            goto bail; \
+        } \
+        if (0) DOLOG("DirectHW: 2 memDesc->getRetainCount:%d memMapKernel->getRetainCount:%d\n", memDesc->getRetainCount(), memMapKernel->getRetainCount()); \
+    } while (0)
+
+#define check_memmapuser() \
+    do { \
+        if (!memMapUser) { \
+            DOLOG("DirectHW: Could not make mapping in user space.\n"); \
+            result = kIOReturnVMError; \
+            goto bail; \
+        } \
+        if (0) DOLOG("DirectHW: 3 memDesc->getRetainCount:%d memMapUser->getRetainCount:%d\n", memDesc->getRetainCount(), memMapUser->getRetainCount()); \
+    } while (0)
+
+IOReturn
+DirectHWUserClient::AllocatePhysicalMemory(
+                           MemParams * inStruct, MemParams * outStruct,
+                           IOByteCount inStructSize,
+                           IOByteCount * outStructSize)
+{
+    IOReturn                result = kIOReturnSuccess;
+
+    IOMemoryDescriptor*     memDesc = NULL;
+    IOMemoryMap*            memMapKernel = NULL;
+    IOMemoryMap*            memMapUser = NULL;
+    bool                    isPrepared = false;
+    char                    key[11];
+    char                    keyKernel[11];
+    bool                    isMapKernelInDictionary = false;
+    bool                    isMapInDictionary = false;
+
+    IOPhysicalSegment*      segmentOffsetsArray = NULL;
+    vm_size_t               segmentOffsetsSize = 0;
+    IOMemoryDescriptor*     segmentsDesc = NULL;
+    IOMemoryMap*            segmentsMapUser = NULL;
+    IOMemoryMap*            segmentsMapKernel = NULL;
+    char                    segmentsKey[11];
+    char                    segmentsKeyKernel[11];
+    bool                    isSegmentsInDictionary = false;
+    bool                    isSegmentsKernelInDictionary = false;
+
+    UInt32                  kernelMemoryType = kMemoryTypeKernel;
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+    void*                   kernelAddress = NULL;
+#endif
+    UInt64                  userAddress = 0;
+
+    if (
+        inStructSize != sizeof(MemParams)
+        || !outStructSize
+        || *outStructSize != inStructSize
+    ) {
+        DOLOG("DirectHW: AllocatePhysicalMemory kIOReturnBadArgument\n");
+        return kIOReturnBadArgument;
+    }
+
+    bcopy(inStruct, outStruct, sizeof(MemParams));
+
+    if (fCrossEndian) {
+        outStruct->memoryType   = OSSwapInt32(outStruct->memoryType  );
+        outStruct->allocOptions = OSSwapInt32(outStruct->allocOptions);
+        outStruct->mapOptions   = OSSwapInt32(outStruct->mapOptions  );
+        outStruct->physMask     = OSSwapInt64(outStruct->physMask    );
+        outStruct->size         = OSSwapInt64(outStruct->size        );
+        outStruct->userAddr     = OSSwapInt64(outStruct->userAddr    );
+        outStruct->physAddr     = OSSwapInt64(outStruct->physAddr    );
+        outStruct->kernAddr     = OSSwapInt64(outStruct->kernAddr    );
+        outStruct->segments     = OSSwapInt64(outStruct->segments    );
+    }
+    IOOptionBits mapOptions = outStruct->mapOptions;
+    UInt64 bufferSize = outStruct->size;
+    UInt64 wantedUserAddr = outStruct->userAddr;
+    UInt32 memoryType = fNextMemoryType++;
+    if (fNextMemoryType == kMemoryTypeMax)
+        fNextMemoryType = 0;
+
+    if ((outStruct->allocOptions & kAllocTypeMask) == kUsePhys) {
+        DOLOG("[ DirectHW: AllocatePhysicalMemory memoryType:%d allocOptions:0x%x mapOptions:0x%x size:0x%llx physAddr:0x%llx\n",
+            (int)memoryType, (int)outStruct->allocOptions, (int)outStruct->mapOptions, outStruct->size, outStruct->physAddr
+        );
+
+        memDesc = IOMemoryDescriptor::withPhysicalAddress((IOPhysicalAddress)outStruct->physAddr, (IOByteCount)outStruct->size, kIODirectionOutIn);
+
+        if (outStruct->allocOptions & kMapKernel) {
+            memMapKernel = memDesc->map(mapOptions | kIOMapAnywhere);
+            check_memmapkernel();
+        }
+    } else if ((outStruct->allocOptions & kAllocTypeMask) == kUseVirt) {
+        DOLOG("[ DirectHW: AllocatePhysicalMemory memoryType:%d allocOptions:0x%x mapOptions:0x%x size:0x%llx userAddr:0x%llx\n",
+            (int)memoryType, (int)outStruct->allocOptions, (int)outStruct->mapOptions, outStruct->size, outStruct->userAddr
+        );
+        if (!wantedUserAddr) {
+            DOLOG("DirectHW: User memory needs an address.\n");
+            result = kIOReturnBadArgument;
+            goto bail;
+        }
+
+        userAddress = wantedUserAddr;
+        #if !(defined(__ppc__) && defined(KPI_10_4_0_PPC_COMPAT))
+            memDesc = IOMemoryDescriptor::withAddressRange(userAddress, bufferSize, kIODirectionOutIn, fTask);
+        #else
+            memDesc = IOMemoryDescriptor::withAddress((vm_address_t)userAddress, (IOByteCount)bufferSize, kIODirectionOutIn, fTask);
+        #endif
+        check_memdesc(); // user(memDesc:1)
+        if (outStruct->allocOptions & kMapKernel) {
+            memMapKernel = memDesc->map(mapOptions | kIOMapAnywhere);
+            check_memmapkernel();
+        }
+    } else {
+        DOLOG("[ DirectHW: AllocatePhysicalMemory memoryType:%d allocOptions:0x%x mapOptions:0x%x physMask:%08llx size:0x%llx\n",
+            (int)memoryType, (int)outStruct->allocOptions, (int)outStruct->mapOptions, outStruct->physMask, outStruct->size
+        );
+
+        bufferSize = (bufferSize + page_size - 1) & -page_size; // http://developer.apple.com/qa/qa2001/qa1197.html
+        //DOLOG("DirectHW: bufferSize:0x%llx\n", bufferSize);
+
+        #if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+            memDesc = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task, kIODirectionOutIn | kIOMemoryPhysicallyContiguous, bufferSize, outStruct->physMask);
+            check_memdesc(); // phys(memDesc:1)
+            //DOLOG("DirectHW: inTaskWithPhysicalMask memDesc:%p\n", memDesc);
+            if (outStruct->allocOptions & kMapKernel) {
+                memMapKernel = memDesc->map(mapOptions | kIOMapAnywhere);
+                check_memmapkernel();
+            }
+        #else
+            kernelMemoryType = kMemoryTypeKernelMalloc;
+            kernelAddress = IOMallocContiguous((vm_size_t)bufferSize, page_size, NULL);
+            if (!kernelAddress) {
+                DOLOG("DirectHW: Could not malloc contiguous memory.\n");
+                result = kIOReturnNoMemory;
+                goto bail;
+            }
+            //DOLOG("DirectHW: IOMallocContiguous kernelAddress:%p\n", kernelAddress);
+
+            IOReturn tempResult = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress)kernelAddress, (IOByteCount)bufferSize, mapOptions & kIOMapCacheMask);
+            if (tempResult != kIOReturnSuccess)
+                DOLOG("DirectHW: IOSetProcessorCacheMode failed:%08x\n", tempResult);
+
+            bzero(kernelAddress, (size_t)bufferSize);
+
+            memDesc = IOMemoryDescriptor::withAddress(kernelAddress, (IOByteCount)bufferSize, kIODirectionOutIn);
+            check_memdesc(); // phys(memDesc:1)
+
+            if (outStruct->allocOptions & kMapKernel) {
+                memMapKernel = memDesc->setMapping(kernel_task, (IOVirtualAddress)kernelAddress, mapOptions & ~kIOMapAnywhere);
+                check_memmapkernel();
+            }
+        #endif
+    }
+
+    {
+        //DOLOG("DirectHW: prepare memDesc:%p\n", memDesc);
+        result = memDesc->prepare(); // this is necessary for userspace memory that is not wired; I don’t think it is necessary for memory allocated with IOMalloc*
+        if (result != kIOReturnSuccess) {
+            DOLOG("DirectHW: Could not prepare user memory.\n");
+            goto bail;
+        }
+        isPrepared = true;
+        //DOLOG("DirectHW: 4 memDesc->getRetainCount:%d\n", memDesc->getRetainCount()); // phys(memDesc:1)
+    }
+
+    if (!((outStruct->allocOptions & kAllocTypeMask) == kUseVirt)) {
+        #ifdef __LP64__
+            //DOLOG("DirectHW: createMappingInTask memDesc:%p ftask:%p mapOptions:%x\n", memDesc, fTask, mapOptions);
+            memMapUser = memDesc->createMappingInTask(fTask, 0, kIOMapDefaultCache | kIOMapAnywhere);
+        #else
+            //DOLOG("DirectHW: map ftask:%p mapOptions:%x\n", fTask, (int)mapOptions);
+            memMapUser = memDesc->map(fTask, 0, mapOptions | kIOMapAnywhere);
+        #endif
+        check_memmapuser(); // phys(memDesc:2 memMapUser:2)
+
+        //DOLOG("DirectHW: memMapUser->getAddress\n");
+        userAddress = memMapUser->getAddress();
+    }
+
+    //DOLOG("DirectHW: memMapUser->getPhysicalSegment\n");
+
+    UInt32      numAllSegments;
+    UInt32      numSegments;
+    IOByteCount offset;
+    IOByteCount length;
+    UInt64      prevSegmentEnd;
+    UInt64      segmentStart;
+
+    {
+        numAllSegments = 0;
+        numSegments = 0;
+        prevSegmentEnd = 0;
+        for (offset = 0; (segmentStart = (UInt64)memDesc->getPhysicalSegment(offset, &length)); offset += length) {
+            // Why does getPhysicalSegment return 1 MB segments that are contiguous?
+            // Don't count contguous segments as separate segments.
+            if (segmentStart != prevSegmentEnd)
+                numSegments++;
+            numAllSegments++;
+            prevSegmentEnd = segmentStart + length;
+        }
+    }
+
+    if (numSegments == 0)
+        DOLOG("DirectHW: numSegments = 0\n");
+    else if (numSegments > 1) {
+        //DOLOG("DirectHW: numSegments = %u\n", (unsigned int)numSegments);
+        segmentOffsetsSize = (numSegments + 1) * sizeof(IOPhysicalSegment);
+        if (segmentOffsetsSize < page_size)
+            segmentOffsetsSize = page_size; // http://developer.apple.com/qa/qa2001/qa1197.html
+        segmentOffsetsArray = (IOPhysicalSegment*) IOMallocAligned(segmentOffsetsSize, page_size /* sizeof(IOByteCount) */);
+        if (!segmentOffsetsArray) {
+            DOLOG("DirectHW: Could not allocate segments array.\n");
+            result = kIOReturnNoMemory;
+            goto bail;
+        }
+
+        segmentsDesc = IOMemoryDescriptor::withAddress(segmentOffsetsArray, segmentOffsetsSize, kIODirectionOutIn);
+        if (!segmentsDesc) {
+            DOLOG("DirectHW: Could not create memory descriptor for segments.\n");
+            result = kIOReturnNoResources;
+            goto bail;
+        }
+        //DOLOG("DirectHW: 5 segmentsDesc->getRetainCount:%d\n", segmentsDesc->getRetainCount()); // 1
+
+        segmentsMapKernel = segmentsDesc->setMapping(kernel_task, (IOVirtualAddress)segmentOffsetsArray);
+        if (!segmentsMapKernel) {
+            DOLOG("DirectHW: Could not make mapping in kernel space for segments.\n");
+            result = kIOReturnVMError;
+            goto bail;
+        }
+        //DOLOG("DirectHW: 6 segmentsDesc->getRetainCount:%d segmentsMapKernel->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapKernel->getRetainCount()); // 2 2
+
+        #ifdef __LP64__
+            segmentsMapUser = segmentsDesc->createMappingInTask(fTask, 0, mapOptions | kIOMapAnywhere);
+        #else
+            segmentsMapUser = segmentsDesc->map(fTask, 0, mapOptions | kIOMapAnywhere);
+        #endif
+        if (!segmentsMapUser) {
+            DOLOG("DirectHW: Could not make mapping in user space for segments.\n");
+            result = kIOReturnVMError;
+            goto bail;
+        }
+        //DOLOG("DirectHW: 7 segmentsDesc->getRetainCount:%d segmentsMapUser->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapUser->getRetainCount()); // 3 2
+
+        IOPhysicalSegment* curRec = segmentOffsetsArray - 1;
+        offset = 0;
+        prevSegmentEnd = 0;
+        int myNumSegments = -1;
+        while (1) {
+            segmentStart = (UInt64)memDesc->getPhysicalSegment(offset, &length);
+            // Why does getPhysicalSegment return 1 MB segments that are contiguous?
+            // Don't count contguous segments as separate segments.
+            if (segmentStart != prevSegmentEnd) {
+                curRec++;
+                myNumSegments++;
+                curRec->location = segmentStart;
+                curRec->length = length;
+                if (!segmentStart)
+                    break;
+                //DOLOG("DirectHW: segment:%-4d offset:0x%lld length:0x%llx location:0x%08llx\n", myNumSegments, (uint64_t)offset, (uint64_t)length, curRec->location);
+            }
+            else {
+                curRec->length += length;
+                //DOLOG("DirectHW:              offset:0x%lld length:0x%llx totalLength:0x%llx\n", myNumSegments, (uint64_t)offset, (uint64_t)length, (uint64_t)curRec->length);
+            }
+            prevSegmentEnd = segmentStart + length;
+            offset += length;
+        }
+
+        snprintf(segmentsKey, sizeof(segmentsKey), "%u", memoryType + kMemoryTypeSegments);
+        if (!fMemoryTypes->setObject(segmentsKey, segmentsMapUser)) {
+            DOLOG("DirectHW: Could not add segments memory descriptor to dictionary.\n");
+            result = kIOReturnNoMemory;
+            goto bail;
+        }
+        isSegmentsInDictionary = true;
+        //DOLOG("DirectHW: 8 segmentsMapUser->getRetainCount:%d segmentsKey:%s\n", segmentsMapUser->getRetainCount(), segmentsKey); // 3 2xxxxxxx
+
+        snprintf(segmentsKeyKernel, sizeof(segmentsKeyKernel), "%u", memoryType + kMemoryTypeSegmentsKernel);
+        if (!fMemoryTypes->setObject(segmentsKeyKernel, segmentsMapKernel)) {
+            DOLOG("DirectHW: Could not add segments kernel memory descriptor to dictionary.\n");
+            result = kIOReturnNoMemory;
+            goto bail;
+        }
+        isSegmentsKernelInDictionary = true;
+        //DOLOG("DirectHW: 9 segmentsMapKernel->getRetainCount:%d segmentsKeyKernel:%s\n", segmentsMapKernel->getRetainCount(), segmentsKeyKernel); // 3 3xxxxxxx
+    }
+
+    if (memMapKernel) {
+        snprintf(keyKernel, sizeof(keyKernel), "%u", memoryType + kernelMemoryType);
+        if (!fMemoryTypes->setObject(keyKernel, memMapKernel)) {
+            DOLOG("DirectHW: Could not add kernel memory descriptor to dictionary.\n");
+            result = kIOReturnNoMemory;
+            goto bail;
+        }
+        isMapKernelInDictionary = true;
+        //DOLOG("DirectHW: 10 memMapKernel->getRetainCount:%d keyKernel:%s\n", memMapKernel->getRetainCount(), keyKernel); // 3 1xxxxxxx
+    }
+
+    if (memMapUser) {
+        snprintf(key, sizeof(key), "%u", memoryType + kMemoryTypeUser);
+        //DOLOG("DirectHW: fMemoryTypes->setObject\n");
+        if (!fMemoryTypes->setObject(key, memMapUser)) {
+            DOLOG("DirectHW: Could not add memory descriptor to dictionary.\n");
+            result = kIOReturnNoMemory;
+            goto bail;
+        }
+        isMapInDictionary = true;
+        //DOLOG("DirectHW: 11 memMapUser->getRetainCount:%d key:%s\n", memMapUser->getRetainCount(), key); // phys(memMapUser:3)
+    }
+
+    // prepare was called so now we can get the physical address
+    outStruct->physAddr = memMapKernel ? memMapKernel->getPhysicalAddress() : memMapUser ? memMapUser->getPhysicalAddress() : 0;
+    outStruct->kernAddr = memMapKernel ? memMapKernel->getAddress() : 0;
+    outStruct->userAddr = userAddress;
+    outStruct->segments = segmentsMapUser ? segmentsMapUser->getAddress() : 0;
+    outStruct->size = bufferSize;
+    outStruct->memoryType = memoryType;
+
+    //DOLOG("DirectHW: user:0x%08llx virt:0x%08llx phys:0x%08llx segments:0x%08llx\n", outStruct->userAddr, outStruct->kernAddr, outStruct->physAddr, outStruct->segments);
+
+    //DOLOG("DirectHW: 12 memDesc->getRetainCount:%d memMapKernel->getRetainCount:%d\n", memDesc ? memDesc->getRetainCount() : 0, memMapKernel ? memMapKernel->getRetainCount() : 0); // phys(memDesc:2 memMapKernel:0)
+
+/*
+    if (memDesc)
+        memDesc->release();
+    if (segmentsDesc)
+        segmentsDesc->release();
+*/
+
+    DOLOG("DirectHW: AllocatePhysicalMemory memoryType:%d allocOptions:0x%x mapOptions:0x%x physMask:%08llx size:0x%llx "
+        "userAddr:0x%llx physAddr:0x%llx kernAddr:0x%llx segments:0x%llx numAllSegments:%d numDiscontiguousSegments:%d\n",
+        (int)memoryType, (int)outStruct->allocOptions, (int)outStruct->mapOptions, outStruct->physMask, outStruct->size,
+        outStruct->userAddr, outStruct->physAddr, outStruct->kernAddr, outStruct->segments, numAllSegments, numSegments
+    );
+
+    if (fCrossEndian) {
+        outStruct->memoryType   = OSSwapInt32(outStruct->memoryType  );
+        outStruct->allocOptions = OSSwapInt32(outStruct->allocOptions);
+        outStruct->mapOptions   = OSSwapInt32(outStruct->mapOptions  );
+        outStruct->physMask     = OSSwapInt64(outStruct->physMask    );
+        outStruct->size         = OSSwapInt64(outStruct->size        );
+        outStruct->userAddr     = OSSwapInt64(outStruct->userAddr    );
+        outStruct->physAddr     = OSSwapInt64(outStruct->physAddr    );
+        outStruct->kernAddr     = OSSwapInt64(outStruct->kernAddr    );
+        outStruct->segments     = OSSwapInt64(outStruct->segments    );
+    }
+
+goto success;
+
+bail:
+    //DOLOG("bail\n");
+    if (isMapInDictionary)
+        fMemoryTypes->removeObject(key);
+    if (isMapKernelInDictionary)
+        fMemoryTypes->removeObject(keyKernel);
+
+    if (isSegmentsKernelInDictionary)
+        fMemoryTypes->removeObject(segmentsKeyKernel);
+    if (isSegmentsInDictionary)
+        fMemoryTypes->removeObject(segmentsKey);
+
+    if (segmentsMapUser)
+        segmentsMapUser->release();
+    if (segmentsMapKernel)
+        segmentsMapKernel->release();
+    if (segmentsDesc)
+        segmentsDesc->release();
+    if (segmentOffsetsArray)
+        IOFreeAligned(segmentOffsetsArray, segmentOffsetsSize);
+
+    if (memMapUser)
+        memMapUser->release();
+    if (isPrepared)
+        if (kIOReturnSuccess != memDesc->complete())
+            DOLOG("DirectHW: Complete failed.\n");
+    if (memMapKernel)
+        memMapKernel->release();
+    if (memDesc)
+        memDesc->release();
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+    if (kernelAddress)
+        IOFreeContiguous(kernelAddress, (IOByteCount)bufferSize);
+#endif
+
+success:
+    DOLOG("] DirectHW: AllocatePhysicalMemory memoryType:%d %sresult:%08x\n", (int)memoryType, (int)result ? "•••" : "", result);
+
+    return result;
+} // AllocatePhysicalMemory
+
+
+IOReturn
+DirectHWUserClient::UnallocatePhysicalMemory(
+                           MemParams * inStruct, MemParams * outStruct,
+                           IOByteCount inStructSize,
+                           IOByteCount * outStructSize)
+{
+    ((void)outStruct);
+    ((void)outStructSize);
+    if (inStructSize != sizeof(MemParams)) {
+        return kIOReturnBadArgument;
+    }
+    return UnallocatePhysicalMemoryType(fCrossEndian ? OSSwapInt32(inStruct->memoryType) : inStruct->memoryType);
+}
+
+IOReturn DirectHWUserClient::UnallocatePhysicalMemoryType(UInt32 memoryType)
+{
+    DOLOG("[ DirectHW: UnallocatePhysicalMemoryType memoryType:%d\n", (int)memoryType);
+
+    IOReturn                result = kIOReturnSuccess;
+
+    IOMemoryDescriptor*     memDesc = NULL;
+    IOMemoryMap*            memMapKernel = NULL;
+    IOMemoryMap*            memMapUser = NULL;
+    bool                    isPrepared = false;
+    char                    key[11];
+    char                    keyKernel[11];
+    bool                    isMapKernelInDictionary = false;
+
+    void*                   segmentOffsetsArray = 0;
+    vm_size_t               segmentOffsetsSize = 0;
+    IOMemoryDescriptor*     segmentsDesc = NULL;
+    IOMemoryMap*            segmentsMapUser = NULL;
+    IOMemoryMap*            segmentsMapKernel = NULL;
+    char                    segmentsKey[11];
+    char                    segmentsKeyKernel[11];
+    bool                    isSegmentsInDictionary = false;
+    bool                    isSegmentsKernelInDictionary = false;
+
+    UInt32                  kernelMemoryType = kMemoryTypeKernel;
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+    void*                   kernelAddress = NULL;
+    IOByteCount             bufferSize = 0;
+#endif
+
+    if (memoryType >= kMemoryTypeMax) {
+        memoryType = memoryType % kMemoryTypeMax;
+        //DOLOG("Will try memoryType %d\n", (int)memoryType);
+    }
+
+    snprintf(key, sizeof(key), "%u", memoryType + kMemoryTypeUser);
+    memMapUser = OSDynamicCast(IOMemoryMap, fMemoryTypes->getObject(key));
+    if (!memMapUser)
+        DOLOG("DirectHW: memory map %s not found in dictionary\n", key);
+    else {
+        //DOLOG("DirectHW: 13 memMapUser->getRetainCount:%d\n", memMapUser->getRetainCount()); // phys(memMapUser:3)
+        memDesc = memMapUser->getMemoryDescriptor();
+
+        if (!memDesc)
+            DOLOG("DirectHW: memory map %s has no memory descriptor\n", key);
+        else {
+            isPrepared = true;
+            //DOLOG("DirectHW: 14 memDesc->getRetainCount:%d memMapUser->getRetainCount:%d\n", memDesc->getRetainCount(), memMapUser->getRetainCount()); // phys(memDesc:2 memMapUser:3)
+        }
+
+        fMemoryTypes->removeObject(key);
+
+        if (!memDesc)
+            DOLOG("DirectHW: memory map %s has no memory descriptor\n", key);
+        else {
+            //DOLOG("DirectHW: 15 memDesc->getRetainCount:%d memMapUser->getRetainCount:%d\n", memDesc->getRetainCount(), memMapUser->getRetainCount()); // phys(memDesc:2 memMapUser:2)
+        }
+    }
+
+    snprintf(keyKernel, sizeof(keyKernel), "%u", memoryType + kernelMemoryType);
+    memMapKernel = OSDynamicCast(IOMemoryMap, fMemoryTypes->getObject(keyKernel));
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+    if (!memMapKernel) {
+        kernelMemoryType = kMemoryTypeKernelMalloc;
+        snprintf(keyKernel, sizeof(keyKernel), "%u", memoryType + kernelMemoryType);
+        memMapKernel = OSDynamicCast(IOMemoryMap, fMemoryTypes->getObject(keyKernel));
+    }
+#endif
+    if (memMapKernel) {
+        isMapKernelInDictionary = true;
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+        if (kernelMemoryType == kMemoryTypeKernelMalloc) {
+            kernelAddress = (void*)memMapKernel->getAddress();
+            bufferSize = memMapKernel->getLength();
+        }
+#endif
+    }
+
+    snprintf(segmentsKey, sizeof(segmentsKey), "%u", memoryType + kMemoryTypeSegments);
+    segmentsMapUser = OSDynamicCast(IOMemoryMap, fMemoryTypes->getObject(segmentsKey));
+    if (segmentsMapUser) {
+        //DOLOG("DirectHW: memory map %s found in dictionary\n", segmentsKey);
+        isSegmentsInDictionary = true;
+    }
+
+    snprintf(segmentsKeyKernel, sizeof(segmentsKeyKernel), "%u", memoryType + kMemoryTypeSegmentsKernel);
+    segmentsMapKernel = OSDynamicCast(IOMemoryMap, fMemoryTypes->getObject(segmentsKeyKernel));
+    if (segmentsMapKernel) {
+        //DOLOG("DirectHW: memory map %s found in dictionary\n", segmentsKeyKernel);
+        isSegmentsKernelInDictionary = true;
+        segmentsDesc = segmentsMapKernel->getMemoryDescriptor();
+        segmentOffsetsArray = (void*)segmentsMapKernel->getAddress();
+        segmentOffsetsSize = segmentsMapKernel->getLength();
+    }
+
+    if (isMapKernelInDictionary) {
+        //DOLOG("DirectHW: 16 DirectHW: memDesc->getRetainCount:%d memMapKernel->getRetainCount:%d\n", memDesc->getRetainCount(), memMapKernel->getRetainCount()); // kext:3 3
+        fMemoryTypes->removeObject(keyKernel);
+    }
+
+    if (isSegmentsKernelInDictionary) {
+        //DOLOG("DirectHW: 17 segmentsDesc->getRetainCount:%d segmentsMapKernel->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapKernel->getRetainCount()); // user:3 3
+        fMemoryTypes->removeObject(segmentsKeyKernel);
+    }
+
+    if (isSegmentsInDictionary) {
+        //DOLOG("DirectHW: 18 segmentsDesc->getRetainCount:%d segmentsMapUser->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapUser->getRetainCount());  // user:3 3
+        fMemoryTypes->removeObject(segmentsKey);
+    }
+
+    if (segmentsMapUser) {
+        //DOLOG("DirectHW: 19 segmentsDesc->getRetainCount:%d segmentsMapUser->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapUser->getRetainCount()); // user:3 2
+        segmentsMapUser->release();
+    }
+    if (segmentsMapKernel) {
+        //DOLOG("DirectHW: 20 segmentsDesc->getRetainCount:%d segmentsMapKernel->getRetainCount:%d\n", segmentsDesc->getRetainCount(), segmentsMapKernel->getRetainCount()); // user:2 2
+        segmentsMapKernel->release();
+    }
+    if (segmentsDesc) {
+        //DOLOG("DirectHW: 21 segmentsDesc->getRetainCount:%d\n", segmentsDesc->getRetainCount()); // user:1
+        segmentsDesc->release();
+    }
+    if (segmentOffsetsArray) {
+        IOFreeAligned((void*)segmentOffsetsArray, segmentOffsetsSize);
+    }
+
+    if (memMapUser) {
+        //DOLOG("DirectHW: 22 memDesc->getRetainCount:%d memMapUser->getRetainCount:%d\n", memDesc->getRetainCount(), memMapUser->getRetainCount()); // phys(memDesc:2 memMapUser:2)
+        memMapUser->release();
+        // even though retainCount was 2, we cannot access memMapUser after this
+    }
+    if (isPrepared)
+        if (kIOReturnSuccess != memDesc->complete())
+            DOLOG("DirectHW: Complete failed.\n");
+    if (memMapKernel) {
+        //DOLOG("DirectHW: 23 memDesc->getRetainCount:%d memMapKernel->getRetainCount:%d\n", memDesc->getRetainCount(), memMapKernel->getRetainCount()); // kext:2 2
+        memMapKernel->release();
+    }
+    if (memDesc) {
+        //DOLOG("DirectHW: 24 memDesc->getRetainCount:%d\n", memDesc->getRetainCount()); // phys(memDesc:1)
+        memDesc->release();
+    }
+#if !defined(__ppc__) || !defined(KPI_10_4_0_PPC_COMPAT)
+#else
+    if (kernelAddress) {
+        IOFreeContiguous((void*)kernelAddress, bufferSize);
+    }
+#endif
+
+    DOLOG("] DirectHW: UnallocatePhysicalMemoryType memoryType:%d result:%08x\n", (int)memoryType, result);
+
+    return result;
+} // UnallocatePhysicalMemoryType

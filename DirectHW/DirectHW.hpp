@@ -66,100 +66,7 @@ class DirectHWUserClient : public IOUserClient
 {
     OSDeclareDefaultStructors(DirectHWUserClient)
 
-    enum {
-        kReadIO,
-        kWriteIO,
-        kPrepareMap,
-        kReadMSR,
-        kWriteMSR,
-        kReadCpuId,
-        kReadMem,
-        kRead,
-        kWrite,
-        kNumberOfMethods
-    };
-
-    typedef struct {
-        UInt64 offset;
-        UInt64 width;
-        UInt64 data; // this field is always little endian
-    } iomem64_t;
-
-    typedef struct {
-        UInt32 offset;
-        UInt32 width;
-        UInt32 data; // this field is always little endian
-    } iomem_t;
-
-    typedef struct {
-        UInt64 addr;
-        UInt64 size;
-    } map_t;
-
-    typedef struct {
-        UInt32 addr;
-        UInt32 size;
-    } map32_t;
-
-    typedef struct {
-        UInt32 core;
-        UInt32 index;
-        UInt32 hi;
-        UInt32 lo;
-    } msrcmd_t;
-
-    typedef struct {
-        uint32_t core;
-        uint32_t eax;
-        uint32_t ecx;
-        uint32_t cpudata[4];
-    } cpuid_t;
-
-     typedef struct {
-        uint32_t core;
-        uint64_t addr;
-        uint32_t data;
-    } readmem_t;
-
-    /* Space definitions */
-    enum {
-        kConfigSpace           = 0,
-        kIOSpace               = 1,
-        k32BitMemorySpace      = 2,
-        k64BitMemorySpace      = 3
-    };
-
-    union Address {
-        uint64_t addr64;
-        struct {
-            unsigned int offset     :16;
-            unsigned int function   :3;
-            unsigned int device     :5;
-            unsigned int bus        :8;
-            unsigned int segment    :16;
-            unsigned int reserved   :16;
-        } pci;
-        struct {
-            unsigned int reserved   :16;
-            unsigned int segment    :16;
-            unsigned int bus        :8;
-            unsigned int device     :5;
-            unsigned int function   :3;
-            unsigned int offset     :16;
-        } pciswapped;
-    };
-    typedef union Address Address;
-
-    struct Parameters {
-        uint32_t options;
-        uint32_t spaceType;
-        uint32_t bitWidth;
-        uint32_t _resv;
-        uint64_t value;
-        Address  address;
-    };
-    typedef struct Parameters Parameters;
-
+    #include "DirectHWShared.h"
 
 public:
     virtual bool initWithTask(task_t task, void *securityID, UInt32 type, OSDictionary* properties) APPLE_KEXT_OVERRIDE;
@@ -173,6 +80,8 @@ public:
 
 protected:
     DirectHWService *fProvider;
+	OSDictionary    *fMemoryTypes; // contains the list of memory allocations
+    UInt32           fNextMemoryType;
 
     static const IOExternalMethod fMethods[kNumberOfMethods];
     static const IOExternalAsyncMethod fAsyncMethods[kNumberOfMethods];
@@ -265,6 +174,26 @@ protected:
                                Parameters * inStruct, Parameters * outStruct,
                                IOByteCount inStructSize,
                                IOByteCount * outStructSize);
+
+    virtual IOReturn AllocatePhysicalMemory(MemParams * inStruct, MemParams * outStruct,
+                           IOByteCount inStructSize,
+                           IOByteCount * outStructSize);
+
+    virtual IOReturn AllocatePhysicalMemoryAsync(OSAsyncReference asyncRef,
+                                         MemParams * inStruct, MemParams * outStruct,
+                                         IOByteCount inStructSize,
+                                         IOByteCount * outStructSize);
+
+    virtual IOReturn UnallocatePhysicalMemory(MemParams * inStruct, MemParams * outStruct,
+                                      IOByteCount inStructSize,
+                                      IOByteCount * outStructSize);
+
+    virtual IOReturn UnallocatePhysicalMemoryAsync(OSAsyncReference asyncRef,
+                                           MemParams * inStruct, MemParams * outStruct,
+                                           IOByteCount inStructSize,
+                                           IOByteCount * outStructSize);
+
+    virtual IOReturn UnallocatePhysicalMemoryType(UInt32 memoryType);
 
 private:
     task_t fTask;

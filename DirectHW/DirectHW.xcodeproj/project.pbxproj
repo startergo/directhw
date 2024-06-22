@@ -22,6 +22,7 @@
 		5D9932D60D0F97D000760F43 /* DirectHW.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DirectHW.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D9932D70D0F97D000760F43 /* DirectHW-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "DirectHW-Info.plist"; sourceTree = "<group>"; };
 		630046332C30137100FE1452 /* Kernel.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Kernel.framework; path = System/Library/Frameworks/Kernel.framework; sourceTree = SDKROOT; };
+		63DFE2232C25A2C00075F0BB /* DirectHWShared.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DirectHWShared.h; sourceTree = "<group>"; };
 		63ECBFC82984EDB80031C612 /* MacOSMacros.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MacOSMacros.h; sourceTree = "<group>"; };
 		AB66BE3125B4AE2C00943C69 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		AB83952325B4B678001D8E16 /* libDirectHW.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libDirectHW.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -95,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				63ECBFC82984EDB80031C612 /* MacOSMacros.h */,
+				63DFE2232C25A2C00075F0BB /* DirectHWShared.h */,
 			);
 			name = "Source Common";
 			sourceTree = "<group>";
