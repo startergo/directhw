@@ -83,4 +83,4 @@ install:
 	command -v kmutil > /dev/null && sudo kmutil install --volume-root / --check-rebuild || :
 
 clean:
-	rm -rf build
+	rm -rf $(build)
