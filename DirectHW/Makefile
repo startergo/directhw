@@ -28,7 +28,7 @@ is10_4 := $(shell bc <<< "                            $${OSTYPE\#darwin} <  9")
 # latestsdk := $(shell xcodebuild -showsdks | sort -r | sed -nE '/.*(-sdk macosx.*)/ { s//\1/;p;q; }')
 
 proj := DirectHW.xcodeproj
-build := build
+build := build/buildlatest
 extensions := /Library/Extensions
 debugsym :=
 sdk := -sdk macosx
