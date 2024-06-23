@@ -19,9 +19,11 @@
 all: main libs
 
 is11   := $(shell bc <<< "$${OSTYPE\#darwin} >= 20")
-is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} >= 10 && $${OSTYPE\#darwin} < 17") # change 17 (10.13) to lowest version that can't build the 10.6 project
+is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} >= 10 && $${OSTYPE\#darwin} < 17")
 is10_5 := $(shell bc <<< "$${OSTYPE\#darwin} >= 9  && $${OSTYPE\#darwin} < 10")
 is10_4 := $(shell bc <<< "                            $${OSTYPE\#darwin} <  9")
+# For is10_6, change 17 (10.13) to lowest version that can't build the 10.6 project.
+# Note: Do not append comments to makefile := assignment lines because spaces before the # become part of the assigned string.
 
 # latestsdk := $(shell xcodebuild -showsdks | sort -r | sed -nE '/.*(-sdk macosx.*)/ { s//\1/;p;q; }')
 
