@@ -388,9 +388,9 @@
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
 				KEEP_PRIVATE_EXTERNS = YES;
-				MARKETING_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
 				MODULE_NAME = com.coresystems.DirectHW;
-				MODULE_VERSION = 1.6.1;
+				MODULE_VERSION = 1.6.2;
 				"OTHER_CFLAGS[arch=ppc]" = "-DKPI_10_4_0_PPC_COMPAT";
 				OTHER_LDFLAGS = (
 					"-Xlinker",
@@ -421,9 +421,9 @@
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
 				KEEP_PRIVATE_EXTERNS = YES;
-				MARKETING_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
 				MODULE_NAME = com.coresystems.DirectHW;
-				MODULE_VERSION = 1.6.1;
+				MODULE_VERSION = 1.6.2;
 				"OTHER_CFLAGS[arch=ppc]" = "-DKPI_10_4_0_PPC_COMPAT";
 				OTHER_LDFLAGS = (
 					"-Xlinker",
@@ -473,7 +473,7 @@
 		FDC4F2B60E923DF00006B2A5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 1.6.1;
+				CURRENT_PROJECT_VERSION = 1.6.2;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				FRAMEWORK_VERSION = A;
@@ -487,8 +487,8 @@
 				INFOPLIST_FILE = "DirectHW-Framework-Info.plist";
 				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Frameworks";
 				KEEP_PRIVATE_EXTERNS = NO;
-				MARKETING_VERSION = 1.6.1;
-				MODULE_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
+				MODULE_VERSION = 1.6.2;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
@@ -498,7 +498,7 @@
 		FDC4F2B70E923DF00006B2A5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 1.6.1;
+				CURRENT_PROJECT_VERSION = 1.6.2;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				FRAMEWORK_VERSION = A;
@@ -509,8 +509,8 @@
 				);
 				INFOPLIST_FILE = "DirectHW-Framework-Info.plist";
 				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Frameworks";
-				MARKETING_VERSION = 1.6.1;
-				MODULE_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
+				MODULE_VERSION = 1.6.2;
 				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;

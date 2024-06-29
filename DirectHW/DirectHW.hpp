@@ -25,7 +25,7 @@
 #include <IOKit/IOMemoryDescriptor.h>
 
 #ifndef DIRECTHW_VERSION
-    #define DIRECTHW_VERSION "1.6.1"
+    #define DIRECTHW_VERSION "1.6.2"
 #endif
 
 #ifndef DIRECTHW_VERNUM

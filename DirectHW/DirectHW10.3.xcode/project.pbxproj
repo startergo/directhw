@@ -168,7 +168,7 @@
 				INFOPLIST_FILE = "DirectHW10.3-Info.plist";
 				INSTALL_PATH = "$(SYSTEM_LIBRARY_DIR)/Extensions";
 				MODULE_NAME = com.coresystems.DirectHW;
-				MODULE_VERSION = 1.6.1;
+				MODULE_VERSION = 1.6.2;
 				OTHER_CPLUSPLUSFLAGS = "-DMAC_OS_X_VERSION_SDK=1030";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coresystems.DirectHW;
 				PRODUCT_NAME = DirectHW;
