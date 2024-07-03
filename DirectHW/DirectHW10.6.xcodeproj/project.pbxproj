@@ -383,7 +383,6 @@
 					"$(inherited)",
 				);
 				GCC_REUSE_STRINGS = YES;
-				HEADER_SEARCH_PATHS = "${SDK}/usr/include";
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
@@ -391,7 +390,13 @@
 				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
 				MODULE_VERSION = 1.6.1;
-				"OTHER_CFLAGS[arch=ppc]" = "-DKPI_10_4_0_PPC_COMPAT";
+				"OTHER_CFLAGS[sdk=macosx10.4][arch=i386]" = "-DMAC_OS_X_VERSION_SDK=1040";
+				"OTHER_CFLAGS[sdk=macosx10.4][arch=ppc]" = (
+					"-DMAC_OS_X_VERSION_SDK=1040",
+					"-DKPI_10_4_0_PPC_COMPAT",
+				);
+				"OTHER_CFLAGS[sdk=macosx10.5][arch=*]" = "-DMAC_OS_X_VERSION_SDK=1050";
+				"OTHER_CFLAGS[sdk=macosx10.6][arch=*]" = "-DMAC_OS_X_VERSION_SDK=1060";
 				OTHER_LDFLAGS = (
 					"-Xlinker",
 					"-no_uuid",
@@ -419,7 +424,6 @@
 					"PRODUCT_NAME=$(PRODUCT_NAME)",
 					"$(inherited)",
 				);
-				HEADER_SEARCH_PATHS = "${SDK}/usr/include";
 				INFOPLIST_FILE = "DirectHW-Info.plist";
 				INSTALL_GROUP = wheel;
 				INSTALL_OWNER = root;
@@ -427,7 +431,13 @@
 				MARKETING_VERSION = 1.6.1;
 				MODULE_NAME = com.coresystems.DirectHW;
 				MODULE_VERSION = 1.6.1;
-				"OTHER_CFLAGS[arch=ppc]" = "-DKPI_10_4_0_PPC_COMPAT";
+				"OTHER_CFLAGS[sdk=macosx10.4][arch=i386]" = "-DMAC_OS_X_VERSION_SDK=1040";
+				"OTHER_CFLAGS[sdk=macosx10.4][arch=ppc]" = (
+					"-DMAC_OS_X_VERSION_SDK=1040",
+					"-DKPI_10_4_0_PPC_COMPAT",
+				);
+				"OTHER_CFLAGS[sdk=macosx10.5][arch=*]" = "-DMAC_OS_X_VERSION_SDK=1050";
+				"OTHER_CFLAGS[sdk=macosx10.6][arch=*]" = "-DMAC_OS_X_VERSION_SDK=1060";
 				OTHER_LDFLAGS = (
 					"-Xlinker",
 					"-no_uuid",
