@@ -20,10 +20,8 @@
 
 #include "MacOSMacros.h"
 
-#include <IOKit/IOLib.h>
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOUserClient.h>
-#include <IOKit/IOKitKeys.h>
 #include <IOKit/IOMemoryDescriptor.h>
 
 #ifndef DIRECTHW_VERSION
