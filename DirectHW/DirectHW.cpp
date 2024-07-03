@@ -111,7 +111,7 @@ OSDefineMetaClassAndStructors(DirectHWService, IOService)
 
 bool DirectHWService::start(IOService * provider)
 {
-    DOLOG("DirectHW: Driver v%s (compiled on %s) loaded.\n", DIRECTHW_VERSION, __DATE__);
+    DOLOG("DirectHW: Driver v%s (compiled on %s at %s) loaded.\n", DIRECTHW_VERSION, __DATE__, __TIME__);
     DOLOG("Visit http://www.coresystems.de/ for more information.\n");
 
     if (super::start(provider)) {
