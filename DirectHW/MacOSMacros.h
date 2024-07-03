@@ -25,25 +25,40 @@
 #include <AvailabilityMacros.h>
 #endif
 
+#ifndef MAC_OS_X_VERSION_10_3
+#define MAC_OS_X_VERSION_10_3 1030
+#endif
+#ifndef MAC_OS_X_VERSION_10_4
+#define MAC_OS_X_VERSION_10_4 1040
+#endif
+#ifndef MAC_OS_X_VERSION_10_5
+#define MAC_OS_X_VERSION_10_5 1050
+#endif
+#ifndef MAC_OS_X_VERSION_10_6
+#define MAC_OS_X_VERSION_10_6 1060
+#endif
+#ifndef MAC_OS_X_VERSION_10_7
+#define MAC_OS_X_VERSION_10_7 1070
+#endif
+
 #ifdef AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER
     #undef MAC_OS_X_VERSION_SDK
     #define MAC_OS_X_VERSION_SDK MAC_OS_X_VERSION_10_4
-#else
-    #define MAC_OS_X_VERSION_10_4 1040
 #endif
 
 #if defined(AVAILABLE_MAC_OS_X_VERSION_10_5_AND_LATER) && defined(TARGET_OS_EMBEDDED)
     #undef MAC_OS_X_VERSION_SDK
     #define MAC_OS_X_VERSION_SDK MAC_OS_X_VERSION_10_5
-#else
-    #define MAC_OS_X_VERSION_10_5 1050
 #endif
 
 #ifdef AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
     #undef MAC_OS_X_VERSION_SDK
     #define MAC_OS_X_VERSION_SDK MAC_OS_X_VERSION_10_6
-#else
-    #define MAC_OS_X_VERSION_10_6 1060
+#endif
+
+#ifdef AVAILABLE_MAC_OS_X_VERSION_10_7_AND_LATER
+    #undef MAC_OS_X_VERSION_SDK
+    #define MAC_OS_X_VERSION_SDK MAC_OS_X_VERSION_10_7
 #endif
 
 #if !defined(MAC_OS_X_VERSION_MAX_ALLOWED) || !defined(MAC_OS_X_VERSION_SDK)
@@ -73,7 +88,9 @@
 #elif MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_5
     #warning SDK 10.5
 #elif MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_6
-    #warning SDK 10.6+
+    #warning SDK 10.6
+#elif MAC_OS_X_VERSION_SDK == MAC_OS_X_VERSION_10_7
+    #warning SDK 10.7+
 #else
     #error unknown SDK
 #endif
