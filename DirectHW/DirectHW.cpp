@@ -1101,14 +1101,10 @@ DirectHWUserClient::ReadWrite(
     IOPCIDevice *pciDevice = NULL;
 
     if (k64BitMemorySpace == params->spaceType) {
-        #ifdef __ppc__
-        md = IOMemoryDescriptor::withAddress((void*)params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn);
+        #if !(defined(__ppc__) && defined(KPI_10_4_0_PPC_COMPAT))
+            md = IOMemoryDescriptor::withAddressRange(params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn | kIOMemoryMapperNone, kernel_task);
         #else
-            #if defined(KPI_10_4_0_PPC_COMPAT)
-                md = IOMemoryDescriptor::withAddressRange(params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn | kIOMemoryMapperNone, NULL);
-            #else
-                md = IOMemoryDescriptor::withAddress((void*)params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn);
-            #endif
+            md = IOMemoryDescriptor::withAddress((void*)params->address.addr64, (params->bitWidth >> 3), kIODirectionOutIn);
         #endif
         if (md) {
             map = md->map();
