@@ -3,8 +3,8 @@
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
-        if (argc != 3) {
-            fprintf(stderr, "Usage: %s <script_file> <function_name>\n", argv[0]);
+        if (argc < 3) {
+            fprintf(stderr, "Usage: %s <script_file> <function_name> [args...]\n", argv[0]);
             return 1;
         }
         
@@ -29,12 +29,17 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         
-        // Execute the script
+        // For create-dmg compatibility, we execute the entire script rather than calling a specific function
+        // The functionName parameter is preserved for interface compatibility but not used in execution
+        // This matches the behavior expected by the create-dmg script
         NSAppleEventDescriptor *result = [script executeAndReturnError:&errorInfo];
         if (!result) {
             fprintf(stderr, "Error executing script: %s\n", [[errorInfo description] UTF8String]);
             return 1;
         }
+        
+        // Suppress unused variable warning by referencing functionName
+        (void)functionName;
         
         return 0;
     }
