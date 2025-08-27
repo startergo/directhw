@@ -58,6 +58,18 @@ jobs:
             echo "No package creation method available or no build directory found, skipping..."
           fi
 
+      - name: Build Universal AppleScript Runner
+        run: |
+          # Build universal AppleScript runner for create-dmg (preserves PowerPC original)
+          cd create-dmg/support
+          make clean
+          make
+          # Save as universal binary (keeping PowerPC original intact)
+          cp AdiumApplescriptRunner AdiumApplescriptRunner-Universal
+          git restore AdiumApplescriptRunner  # Restore PowerPC original
+          file AdiumApplescriptRunner AdiumApplescriptRunner-Universal
+          echo "Built universal AppleScript runner alongside PowerPC original"
+
       - name: Create DMG
         run: |
           # Prepare DMG contents
@@ -98,13 +110,17 @@ jobs:
           
           # Only create DMG if we have content
           if [ "$(ls -A dmg_contents/)" ]; then
-            # Create DMG using create-dmg
+            # Create DMG using create-dmg with custom layout
             ./create-dmg/create-dmg \
-              --volname "DirectHW" \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --app-drop-link 425 120 \
-              DirectHW.dmg \
+              --volname "DirectHW v1.5.1" \
+              --window-size 700 400 \
+              --icon-size 96 \
+              --icon "Install DirectHW.pkg" 200 200 \
+              --icon "DirectHW.framework" 350 200 \
+              --icon "DirectHW.kext" 500 200 \
+              --icon "Read Me.rtf" 200 300 \
+              --icon "Welcome.rtf" 350 300 \
+              DirectHW-v1.5.1.dmg \
               dmg_contents/ || echo "DMG creation failed, but content exists"
           else
             echo "No content for DMG, skipping DMG creation"
@@ -116,7 +132,7 @@ jobs:
         with:
           name: DirectHW-DMG
           path: |
-            DirectHW.dmg
+            DirectHW-v1.5.1.dmg
             dmg_contents/
           if-no-files-found: warn
 
