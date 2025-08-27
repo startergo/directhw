@@ -65,19 +65,24 @@ jobs:
           
           # Check what was actually built
           echo "=== Build directory contents ==="
-          ls -la DirectHW/build/ || echo "No build directory"
+          find DirectHW -name "build*" -type d -exec ls -la {} \; 2>/dev/null || echo "No build directory found"
           find DirectHW -name "*.kext" -o -name "*.framework" -o -name "*.dylib" -o -name "*.pkg" 2>/dev/null || echo "No built artifacts found"
           
-          # Copy build artifacts if they exist
+          # Copy build artifacts - check multiple possible build directories
+          for BUILD_DIR in "build/buildlatest/Release" "build/Release" "build/*/Release"; do
+            if [ -d "./DirectHW/$BUILD_DIR" ]; then
+              echo "Found build directory for DMG: ./DirectHW/$BUILD_DIR"
+              find ./DirectHW/$BUILD_DIR -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null
+              find ./DirectHW/$BUILD_DIR -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null
+              find ./DirectHW/$BUILD_DIR -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null
+              find ./DirectHW/$BUILD_DIR -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null
+              break  # Use first found build directory
+            fi
+          done
+          
+          # Copy package if it exists
           if [ -f "./DirectHW/DirectHW.pkg" ]; then
             cp "./DirectHW/DirectHW.pkg" "dmg_contents/Install DirectHW.pkg"
-          fi
-          
-          # Copy built binaries
-          if [ -d "./DirectHW/build" ]; then
-            find ./DirectHW/build -name "*.kext" -exec cp -r {} dmg_contents/ \;
-            find ./DirectHW/build -name "*.framework" -exec cp -r {} dmg_contents/ \;
-            find ./DirectHW/build -name "*.dylib" -exec cp {} dmg_contents/ \;
           fi
           
           # Copy documentation
