@@ -51,9 +51,25 @@ jobs:
         run: |
           # Prepare DMG contents
           mkdir -p dmg_contents
+          
+          # Check what was actually built
+          echo "=== Build directory contents ==="
+          ls -la DirectHW/build/ || echo "No build directory"
+          find DirectHW -name "*.kext" -o -name "*.framework" -o -name "*.dylib" -o -name "*.pkg" 2>/dev/null || echo "No built artifacts found"
+          
+          # Copy build artifacts if they exist
           if [ -f "./DirectHW/DirectHW.pkg" ]; then
             cp "./DirectHW/DirectHW.pkg" "dmg_contents/Install DirectHW.pkg"
           fi
+          
+          # Copy built binaries
+          if [ -d "./DirectHW/build" ]; then
+            find ./DirectHW/build -name "*.kext" -exec cp -r {} dmg_contents/ \;
+            find ./DirectHW/build -name "*.framework" -exec cp -r {} dmg_contents/ \;
+            find ./DirectHW/build -name "*.dylib" -exec cp {} dmg_contents/ \;
+          fi
+          
+          # Copy documentation
           if [ -f "./DirectHW/ReadMe.rtf" ]; then
             cp "./DirectHW/ReadMe.rtf" "dmg_contents/Read Me.rtf"
           fi
@@ -61,14 +77,22 @@ jobs:
             cp "./DirectHW/Welcome.rtf" "dmg_contents/Welcome.rtf"
           fi
           
-          # Create DMG using create-dmg
-          ./create-dmg/create-dmg \
-            --volname "DirectHW" \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --app-drop-link 425 120 \
-            DirectHW.dmg \
-            dmg_contents/ || echo "DMG creation failed, uploading build artifacts instead"
+          echo "=== DMG contents ==="
+          ls -la dmg_contents/
+          
+          # Only create DMG if we have content
+          if [ "$(ls -A dmg_contents/)" ]; then
+            # Create DMG using create-dmg
+            ./create-dmg/create-dmg \
+              --volname "DirectHW" \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --app-drop-link 425 120 \
+              DirectHW.dmg \
+              dmg_contents/ || echo "DMG creation failed, but content exists"
+          else
+            echo "No content for DMG, skipping DMG creation"
+          fi
 
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
@@ -77,11 +101,18 @@ jobs:
           name: DirectHW-DMG
           path: |
             DirectHW.dmg
-            DirectHW/build/Release/
+            dmg_contents/
           if-no-files-found: warn
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: DirectHW-Build-Artifacts
-          path: DirectHW/build/Release
+          path: |
+            DirectHW/build/
+            DirectHW/*.pkg
+            DirectHW/*.kext
+            DirectHW/*.framework
+            DirectHW/*.dylib
+          if-no-files-found: warn
