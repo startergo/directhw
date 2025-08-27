@@ -132,8 +132,23 @@ fi
 APPLESCRIPT=$(mktemp -t createdmg)
 cat "$AUX_PATH/template.applescript" | sed -e "s/WINX/$WINX/g" -e "s/WINY/$WINY/g" -e "s/WINW/$WINW/g" -e "s/WINH/$WINH/g" -e "s/BACKGROUND_CLAUSE/$BACKGROUND_CLAUSE/g" -e "s/ICON_SIZE/$ICON_SIZE/g" | perl -pe  "s/POSITION_CLAUSE/$POSITION_CLAUSE/g" >"$APPLESCRIPT"
 
-echo "Running Applescript: ./AdiumApplescriptRunner \"${APPLESCRIPT}\" process_disk_image \"${VOLUME_NAME}\""
-"$AUX_PATH/AdiumApplescriptRunner" "${APPLESCRIPT}" process_disk_image "${VOLUME_NAME}" || true
+# Choose appropriate AppleScript runner based on architecture
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "x86_64" ]; then
+    # Use universal binary for Intel/Apple Silicon
+    APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner-Universal"
+    if [ ! -f "$APPLESCRIPT_RUNNER" ]; then
+        # Fallback to building universal binary if it doesn't exist
+        echo "Building universal AppleScript runner..."
+        (cd "$AUX_PATH" && make clean && make) || APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner"
+    fi
+else
+    # Use original PowerPC binary for vintage systems
+    APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner"
+fi
+
+echo "Running Applescript: $APPLESCRIPT_RUNNER \"${APPLESCRIPT}\" process_disk_image \"${VOLUME_NAME}\""
+"$APPLESCRIPT_RUNNER" "${APPLESCRIPT}" process_disk_image "${VOLUME_NAME}" || true
 echo "Done running the applescript..."
 sleep 4
 
