@@ -35,8 +35,19 @@ jobs:
           # Create unsigned package for CI/CD distribution
           # Note: For production use, kext requires valid developer signature
           # Users should re-sign with their certificates: codesign --force --sign "Developer ID" DirectHW.kext
-          if command -v pkgbuild >/dev/null 2>&1; then
-            pkgbuild --root ./build/Release \
+          
+          # Find the actual build directory
+          BUILD_ROOT=""
+          for BUILD_DIR in "build/buildlatest/Release" "build/Release" "build/*/Release"; do
+            if [ -d "./$BUILD_DIR" ]; then
+              BUILD_ROOT="./$BUILD_DIR"
+              echo "Found build directory: $BUILD_ROOT"
+              break
+            fi
+          done
+          
+          if [ -n "$BUILD_ROOT" ] && command -v pkgbuild >/dev/null 2>&1; then
+            pkgbuild --root "$BUILD_ROOT" \
               --identifier com.directhw \
               --version 1.0 \
               --scripts . \
@@ -44,7 +55,7 @@ jobs:
           elif [ -d "DirectHW.pmdoc" ]; then
             packagemaker --doc DirectHW.pmdoc --id com.directhw --out DirectHW.pkg || echo "Package creation with packagemaker failed, continuing..."
           else
-            echo "No package creation method available, skipping..."
+            echo "No package creation method available or no build directory found, skipping..."
           fi
 
       - name: Create DMG
@@ -110,7 +121,8 @@ jobs:
         with:
           name: DirectHW-Build-Artifacts
           path: |
-            DirectHW/build/
+            DirectHW/build/buildlatest/Release/
+            DirectHW/build/*/Release/
             DirectHW/*.pkg
             DirectHW/*.kext
             DirectHW/*.framework
