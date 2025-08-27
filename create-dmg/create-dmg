@@ -138,17 +138,36 @@ if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "x86_64" ]; then
     # Use universal binary for Intel/Apple Silicon
     APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner-Universal"
     if [ ! -f "$APPLESCRIPT_RUNNER" ]; then
-        # Fallback to building universal binary if it doesn't exist
-        echo "Building universal AppleScript runner..."
-        (cd "$AUX_PATH" && make clean && make) || APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner"
+        # Try to build universal binary if it doesn't exist
+        echo "Building universal AppleScript runner for $ARCH architecture..."
+        if (cd "$AUX_PATH" && make clean && make); then
+            # Successfully built, copy to universal binary name
+            cp "$AUX_PATH/AdiumApplescriptRunner" "$AUX_PATH/AdiumApplescriptRunner-Universal" 2>/dev/null || true
+            APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner-Universal"
+        else
+            echo "Warning: Could not build universal AppleScript runner for $ARCH architecture."
+            echo "Attempting to use native osascript instead..."
+            # Fallback: use osascript directly
+            APPLESCRIPT_RUNNER="osascript"
+        fi
     fi
 else
     # Use original PowerPC binary for vintage systems
     APPLESCRIPT_RUNNER="$AUX_PATH/AdiumApplescriptRunner"
+    if [ ! -f "$APPLESCRIPT_RUNNER" ]; then
+        echo "Error: Original AdiumApplescriptRunner not found for PowerPC architecture."
+        exit 1
+    fi
 fi
 
 echo "Running Applescript: $APPLESCRIPT_RUNNER \"${APPLESCRIPT}\" process_disk_image \"${VOLUME_NAME}\""
-"$APPLESCRIPT_RUNNER" "${APPLESCRIPT}" process_disk_image "${VOLUME_NAME}" || true
+if [ "$APPLESCRIPT_RUNNER" = "osascript" ]; then
+    # Direct osascript execution as fallback
+    osascript "${APPLESCRIPT}" || true
+else
+    # Use the AppleScript runner binary
+    "$APPLESCRIPT_RUNNER" "${APPLESCRIPT}" process_disk_image "${VOLUME_NAME}" || true
+fi
 echo "Done running the applescript..."
 sleep 4
 
