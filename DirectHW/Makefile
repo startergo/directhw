@@ -27,12 +27,25 @@ is10_11 := $(shell bc <<< "$${OSTYPE\#darwin} == 15")
 is10_10 := $(shell bc <<< "$${OSTYPE\#darwin} == 14")
 is10_9 := $(shell bc <<< "$${OSTYPE\#darwin} == 13")
 is10_9plus := $(shell bc <<< "$${OSTYPE\#darwin} >= 13")
-is10_8 := $(shell bc <<< "$${OSTYPE\#darwin} == 12")
-is10_7 := $(shell bc <<< "$${OSTYPE\#darwin} == 11")
-is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} == 10")
-is10_5 := $(shell bc <<< "$${OSTYPE\#darwin} == 9")
-is10_4 := $(shell bc <<< "$${OSTYPE\#darwin} == 8")
-# Note: Do not append comments to makefile := assignment lines because spaces before the # become part of the assigned string.
+# Get macOS version using sw_vers for reliable detection
+# sw_vers -productVersion works in 10.3+ but not 10.2 and earlier
+# Fallback using perl works in 10.1 and later
+macos_version := 0$(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 || sw_vers 2>/dev/null | perl -ne 'if (/ProductVersion:\s*(\d+(\.\d+)?)/) { print $$1 }' | cut -d. -f1-2)
+
+# Version comparisons using proper macOS version detection
+is_big_sur_or_later := $(shell echo "$(macos_version) >= 11.0" | bc -l 2>/dev/null || echo "0")
+is_catalina_or_later := $(shell echo "$(macos_version) >= 10.15" | bc -l 2>/dev/null || echo "0")
+is_mojave_or_later := $(shell echo "$(macos_version) >= 10.14" | bc -l 2>/dev/null || echo "0")
+is_high_sierra_or_later := $(shell echo "$(macos_version) >= 10.13" | bc -l 2>/dev/null || echo "0")
+is_sierra_or_later := $(shell echo "$(macos_version) >= 10.12" | bc -l 2>/dev/null || echo "0")
+is_el_capitan_or_later := $(shell echo "$(macos_version) >= 10.11" | bc -l 2>/dev/null || echo "0")
+is_yosemite_or_later := $(shell echo "$(macos_version) >= 10.10" | bc -l 2>/dev/null || echo "0")
+is_mavericks_or_later := $(shell echo "$(macos_version) >= 10.9" | bc -l 2>/dev/null || echo "0")
+is_mountain_lion_or_later := $(shell echo "$(macos_version) >= 10.8" | bc -l 2>/dev/null || echo "0")
+is_lion_or_later := $(shell echo "$(macos_version) >= 10.7" | bc -l 2>/dev/null || echo "0")
+is_snow_leopard_or_later := $(shell echo "$(macos_version) >= 10.6" | bc -l 2>/dev/null || echo "0")
+is_leopard_or_later := $(shell echo "$(macos_version) >= 10.5" | bc -l 2>/dev/null || echo "0")
+is_tiger_or_later := $(shell echo "$(macos_version) >= 10.4" | bc -l 2>/dev/null || echo "0")
 
 # latestsdk := $(shell xcodebuild -showsdks | sort -r | sed -nE '/.*(-sdk macosx.*)/ { s//\1/;p;q; }')
 
@@ -42,79 +55,78 @@ extensions := /System/Library/Extensions
 debugsym :=
 sdk := -sdk macosx
 deploy := MACOSX_DEPLOYMENT_TARGET=10.6
-arch := 
-ifeq ($(is11), 1)
+arch :=
+# Use proper macOS version detection for build configuration
+ifneq ($(is_big_sur_or_later), 0)
 	build := build/build11
 endif
-ifeq ($(is10_15), 1)
+ifneq ($(is_catalina_or_later), 0)
 	build := build/build10.15
 endif
-ifeq ($(is10_14), 1)
+ifneq ($(is_mojave_or_later), 0)
 	build := build/build10.14
 endif
-ifeq ($(is10_13), 1)
+ifneq ($(is_high_sierra_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build10.13
 	sdk := -sdk macosx10.13
 	arch := -arch x86_64
 endif
-ifeq ($(is10_12), 1)
+ifneq ($(is_sierra_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.12
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_11), 1)
+ifneq ($(is_el_capitan_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.11
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_10), 1)
+ifneq ($(is_yosemite_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.10
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_9), 1)
+ifneq ($(is_mavericks_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.9
-	sdk := 
-	deploy := 
-endif
-ifeq ($(is10_9plus), 1)
+	sdk :=
+	deploy :=
 	extensions := /Library/Extensions
 endif
-ifeq ($(is10_8), 1)
+ifneq ($(is_mountain_lion_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.8
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_7), 1)
+ifneq ($(is_lion_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.7
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_6), 1)
+ifneq ($(is_snow_leopard_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.6
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_5), 1)
+ifneq ($(is_leopard_or_later), 0)
 	proj := DirectHW10.5.xcodeproj
 	build := build/build10.5
 	debugsym := -g
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
-ifeq ($(is10_4), 1)
+ifneq ($(is_tiger_or_later), 0)
 	proj := DirectHW10.4.xcodeproj
 	build := build/build10.4
-	sdk := 
-	deploy := 
+	sdk :=
+	deploy :=
 endif
 
 main:
@@ -141,7 +153,12 @@ install:
 	sudo kextunload -v $(extensions)/DirectHW.kext || :
 	sudo kextload -v $(extensions)/DirectHW.kext
 	sudo touch $(extensions) || :
-	command -v kmutil > /dev/null && sudo kmutil install --volume-root / --check-rebuild || :
+	# Use kmutil for macOS 10.13+ (High Sierra and later), kextcache for older versions
+	if [ "$(is_high_sierra_or_later)" != "0" ]; then \
+		sudo kmutil install --volume-root / --check-rebuild || : ; \
+	else \
+		sudo kextcache -system-prelinked-kernel || sudo kextcache -system-cache || : ; \
+	fi
 
 clean:
 	rm -rf $(build)
