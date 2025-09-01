@@ -33,6 +33,7 @@ is10_9plus := $(shell bc <<< "$${OSTYPE\#darwin} >= 13")
 macos_version := 0$(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 || sw_vers 2>/dev/null | perl -ne 'if (/ProductVersion:\s*(\d+(\.\d+)?)/) { print $$1 }' | cut -d. -f1-2)
 
 # Version comparisons using proper macOS version detection
+is_sequoia_or_later := $(shell echo "$(macos_version) >= 15.0" | bc -l 2>/dev/null || echo "0")
 is_big_sur_or_later := $(shell echo "$(macos_version) >= 11.0" | bc -l 2>/dev/null || echo "0")
 is_catalina_or_later := $(shell echo "$(macos_version) >= 10.15" | bc -l 2>/dev/null || echo "0")
 is_mojave_or_later := $(shell echo "$(macos_version) >= 10.14" | bc -l 2>/dev/null || echo "0")
@@ -57,72 +58,74 @@ sdk := -sdk macosx
 deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 arch :=
 # Use proper macOS version detection for build configuration
-ifneq ($(is_big_sur_or_later), 0)
+ifneq ($(is_sequoia_or_later), 0)
+	proj := DirectHW.xcodeproj
+	build := build/build15
+	sdk := -sdk macosx
+	arch := -arch x86_64
+else ifneq ($(is_big_sur_or_later), 0)
+	proj := DirectHW.xcodeproj
 	build := build/build11
-endif
-ifneq ($(is_catalina_or_later), 0)
+	sdk := -sdk macosx
+	arch := -arch x86_64
+else ifneq ($(is_catalina_or_later), 0)
+	proj := DirectHW.xcodeproj
 	build := build/build10.15
-endif
-ifneq ($(is_mojave_or_later), 0)
+	sdk := -sdk macosx
+	arch := -arch x86_64
+else ifneq ($(is_mojave_or_later), 0)
+	proj := DirectHW.xcodeproj
 	build := build/build10.14
-endif
-ifneq ($(is_high_sierra_or_later), 0)
+	sdk := -sdk macosx10.14
+	arch := -arch x86_64
+else ifneq ($(is_high_sierra_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build10.13
 	sdk := -sdk macosx10.13
 	arch := -arch x86_64
-endif
-ifneq ($(is_sierra_or_later), 0)
+else ifneq ($(is_sierra_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.12
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_el_capitan_or_later), 0)
+else ifneq ($(is_el_capitan_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.11
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_yosemite_or_later), 0)
+else ifneq ($(is_yosemite_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.10
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_mavericks_or_later), 0)
+else ifneq ($(is_mavericks_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.9
 	sdk :=
 	deploy :=
 	extensions := /Library/Extensions
-endif
-ifneq ($(is_mountain_lion_or_later), 0)
+else ifneq ($(is_mountain_lion_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.8
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_lion_or_later), 0)
+else ifneq ($(is_lion_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.7
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_snow_leopard_or_later), 0)
+else ifneq ($(is_snow_leopard_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.6
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_leopard_or_later), 0)
+else ifneq ($(is_leopard_or_later), 0)
 	proj := DirectHW10.5.xcodeproj
 	build := build/build10.5
 	debugsym := -g
 	sdk :=
 	deploy :=
-endif
-ifneq ($(is_tiger_or_later), 0)
+else ifneq ($(is_tiger_or_later), 0)
 	proj := DirectHW10.4.xcodeproj
 	build := build/build10.4
 	sdk :=
@@ -130,10 +133,21 @@ ifneq ($(is_tiger_or_later), 0)
 endif
 
 main:
-	xcodebuild -alltargets -project $(proj) $(sdk) $(deploy) $(arch) SYMROOT=$(build)
+	@echo "=== Attempting Xcode build ===" && \
+	xcodebuild -alltargets -project $(proj) $(sdk) $(deploy) $(arch) SYMROOT=$(build) 2>/dev/null && \
+	echo "✅ Xcode build succeeded" || \
+	(echo "❌ Xcode build failed, falling back to Command Line Tools" && \
+	 $(MAKE) libs-fallback)
 
 libs: DirectHW.c DirectHW.h
-	$(CC) DirectHW.c -dynamiclib -framework IOKit -o $(build)/Release/libDirectHW.dylib $(debugsym)
+	mkdir -p $(build)/Release
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
+
+libs-fallback: DirectHW.c DirectHW.h
+	@echo "=== Building with Command Line Tools (fallback) ==="
+	mkdir -p $(build)/Release
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
 
 install:
