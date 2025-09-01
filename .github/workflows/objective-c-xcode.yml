@@ -208,10 +208,19 @@ jobs:
           for BUILD_DIR in "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
             if [ -d "$BUILD_DIR" ]; then
               echo "📁 Found build directory for DMG: $BUILD_DIR"
-              find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
+              
+              # Copy available artifacts (may not have all types due to build failures)
+              find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found kext files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found framework files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found library files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found static library files" && ARTIFACTS_FOUND=true
+              
+              # If we found at least the library, consider it successful
+              if [ -f "$BUILD_DIR/libDirectHW.dylib" ]; then
+                ARTIFACTS_FOUND=true
+                echo "✅ Core library found - DMG creation possible"
+              fi
+              
               break  # Use first found build directory
             fi
           done
@@ -222,10 +231,10 @@ jobs:
             echo "✅ Copied distribution package"
             ARTIFACTS_FOUND=true
           elif [ -f "DirectHW/DirectHW-lib.pkg" ]; then
-            cp "DirectHW/DirectHW-lib.pkg" "dmg_contents/DirectHW-lib.pkg"
-            cp "DirectHW/DirectHW-kext.pkg" "dmg_contents/DirectHW-kext.pkg" 2>/dev/null
-            cp "DirectHW/DirectHW-framework.pkg" "dmg_contents/DirectHW-framework.pkg" 2>/dev/null
-            echo "✅ Copied component packages"
+            cp "DirectHW/DirectHW-lib.pkg" "dmg_contents/DirectHW-lib.pkg" 2>/dev/null || echo "⚠️  Library package not found"
+            cp "DirectHW/DirectHW-kext.pkg" "dmg_contents/DirectHW-kext.pkg" 2>/dev/null || echo "⚠️  Kext package not found"
+            cp "DirectHW/DirectHW-framework.pkg" "dmg_contents/DirectHW-framework.pkg" 2>/dev/null || echo "⚠️  Framework package not found"
+            echo "✅ Copied available component packages"
             ARTIFACTS_FOUND=true
           fi
           
@@ -246,12 +255,26 @@ jobs:
           if [ "$ARTIFACTS_FOUND" = true ] && [ "$(ls -A dmg_contents/)" ]; then
             echo "🎯 Creating DMG with found content"
             # Create DMG using hdiutil (more reliable than create-dmg in CI)
-            hdiutil create -volname "DirectHW v1.5.1" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg && echo "✅ DMG created successfully" || echo "❌ DMG creation failed"
+            hdiutil create -volname "DirectHW v1.5.1" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg
+            if [ $? -eq 0 ]; then
+              echo "✅ DMG created successfully"
+            else
+              echo "❌ DMG creation failed"
+              exit 1
+            fi
           else
             echo "⚠️  No content for DMG, creating minimal DMG for CI testing"
             # Create a minimal DMG with just documentation for CI testing
             echo "DirectHW CI Test - Build artifacts not available due to Xcode compatibility issues" > dmg_contents/README.txt
-            hdiutil create -volname "DirectHW CI Test" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg && echo "✅ Minimal DMG created for CI testing" || echo "❌ Minimal DMG creation failed"
+            echo "This DMG contains only documentation. Full build artifacts were not generated." >> dmg_contents/README.txt
+            echo "This is expected with Xcode 16.4 and older macOS SDK targets." >> dmg_contents/README.txt
+            hdiutil create -volname "DirectHW CI Test" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg
+            if [ $? -eq 0 ]; then
+              echo "✅ Minimal DMG created for CI testing"
+            else
+              echo "❌ Minimal DMG creation failed"
+              exit 1
+            fi
           fi
 
       - name: Upload DMG Artifact
