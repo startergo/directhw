@@ -212,9 +212,9 @@ vpddecode             # VPD decoding via DirectHW
 | Platform | Kernel Extension | Memory Management | MSR Support | Multi-Core | Port I/O | Notes |
 |----------|------------------|-------------------|-------------|------------|----------|-------|
 | **macOS 13+ (Ventura+) Intel** | ✅ Universal | ✅ Full DMA | ✅ All MSRs | ✅ Per-Core | ✅ Full | Complete x86_64 support |
-| **macOS 13+ (Ventura+) Apple Silicon** | ✅ Universal | ✅ Full DMA | ❌ No MSRs | ⚠️ Limited | ❌ No Port I/O | ARM64 limitations, kext loading restricted, boot-args ineffective |
+| **macOS 13+ (Ventura+) Apple Silicon** | ✅ Universal | ✅ Full DMA | ❌ No MSRs | ⚠️ Limited | ❌ No Port I/O | ARM64 limitations |
 | **macOS 10.15-12 Intel** | ✅ Intel/Universal | ✅ Full DMA | ✅ All MSRs | ✅ Per-Core | ✅ Full | Complete Intel support |
-| **macOS 10.15-12 Apple Silicon** | ✅ Universal | ✅ Full DMA | ❌ No MSRs | ⚠️ Limited | ❌ No Port I/O | ARM64 limitations, boot-args ineffective |
+| **macOS 10.15-12 Apple Silicon** | ✅ Universal | ✅ Full DMA | ❌ No MSRs | ⚠️ Limited | ❌ No Port I/O | ARM64 limitations |
 | **macOS 10.9-14 Intel** | ✅ Intel 64-bit | ✅ Full DMA | ✅ All MSRs | ✅ Per-Core | ✅ Full | Complete Intel support |
 | **Mac OS X 10.4-10.8** | ✅ Intel/PPC | ✅ Basic DMA | ✅ Limited | ⚠️ Basic | ✅ Legacy | Vintage system support |
 
