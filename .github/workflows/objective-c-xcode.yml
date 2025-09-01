@@ -30,27 +30,44 @@ jobs:
       - name: Xcodebuild (Unsigned for CI)
         working-directory: ./DirectHW
         run: |
-          # Build without signing for CI/CD - users can sign locally if needed
-          echo "=== Starting Xcode Build ==="
-          xcodebuild -alltargets -project DirectHW.xcodeproj \
+          # Detect macOS version for proper project selection
+          MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1)
+          echo "macOS major version: $MACOS_VERSION"
+          
+          # Choose appropriate Xcode project based on macOS version
+          if [ "$MACOS_VERSION" -ge 15 ]; then
+            echo "Using modern DirectHW.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW.xcodeproj"
+            BUILD_DIR="build/build15"
+          elif [ "$MACOS_VERSION" -ge 11 ]; then
+            echo "Using modern DirectHW.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW.xcodeproj"
+            BUILD_DIR="build/build11"
+          else
+            echo "Using legacy DirectHW10.6.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW10.6.xcodeproj"
+            BUILD_DIR="build/build10.6"
+          fi
+          
+          echo "=== Starting Xcode Build with $XCODE_PROJ ==="
+          xcodebuild -alltargets -project "$XCODE_PROJ" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            -verbose || echo "Xcode build failed - this is expected with Xcode 16.4 and older SDKs"
+            SYMROOT="$BUILD_DIR" \
+            -verbose || echo "Xcode build failed - this is expected with modern Xcode and older projects"
           
           # Check if build succeeded
-          if [ -d "build/buildlatest/Release" ]; then
-            echo "✅ Build succeeded - found build artifacts"
-            ls -la build/buildlatest/Release/
+          if [ -d "$BUILD_DIR/Release" ] && [ -f "$BUILD_DIR/Release/libDirectHW.dylib" ]; then
+            echo "✅ Xcode build succeeded"
+            ls -la "$BUILD_DIR/Release/"
           else
-            echo "❌ Build failed - no artifacts found"
-            echo "This is likely due to Xcode 16.4 SDK compatibility issues"
-            echo "For production builds, use Xcode 15.x or earlier"
+            echo "❌ Xcode build failed or incomplete - will use make libs fallback"
           fi
         
       - name: libs
         working-directory: ./DirectHW
-        run: make libs
+        run: make main
 
       - name: Create Package
         working-directory: ./DirectHW
@@ -61,8 +78,9 @@ jobs:
           BUILD_ROOT=""
           BUILD_SUCCESS=false
           
-          for BUILD_DIR in "build/buildlatest/Release" "build/Release" "build/*/Release"; do
-            if [ -d "./$BUILD_DIR" ]; then
+          # Check version-specific build directories first
+          for BUILD_DIR in "build/build15/Release" "build/build11/Release" "build/buildlatest/Release" "build/Release" "build/*/Release"; do
+            if [ -d "./$BUILD_DIR" ] && [ -f "./$BUILD_DIR/libDirectHW.dylib" ]; then
               BUILD_ROOT="./$BUILD_DIR"
               echo "✅ Found build directory: $BUILD_ROOT"
               BUILD_SUCCESS=true
@@ -187,7 +205,7 @@ jobs:
           
           # Copy build artifacts - check multiple possible build directories
           ARTIFACTS_FOUND=false
-          for BUILD_DIR in "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
+          for BUILD_DIR in "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
             if [ -d "$BUILD_DIR" ]; then
               echo "📁 Found build directory for DMG: $BUILD_DIR"
               find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
@@ -252,6 +270,8 @@ jobs:
         with:
           name: DirectHW-Build-Artifacts
           path: |
+            DirectHW/build/build15/Release/
+            DirectHW/build/build11/Release/
             DirectHW/build/buildlatest/Release/
             DirectHW/build/*/Release/
             DirectHW/*.pkg
