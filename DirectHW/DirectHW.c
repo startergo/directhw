@@ -62,7 +62,7 @@ static int darwin_init(void)
     }
 
     /* Get the DirectHW driver service */
-    iokit_uc = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("DirectHWService"));
+    iokit_uc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("DirectHWService"));
 
     if (!iokit_uc) {
         printf("DirectHW.kext not loaded.\n");
@@ -101,20 +101,8 @@ kern_return_t MyIOConnectCallStructMethod(
 )
 {
     kern_return_t err;
-#if MAC_OS_X_VERSION_MAX_ALLOWED <= MAC_OS_X_VERSION_10_4 || MAC_OS_X_VERSION_SDK <= MAC_OS_X_VERSION_10_4
-    err = IOConnectMethodStructureIStructureO(connect, index, dataInLen, dataOutLen, in, out);
-#elif defined(__LP64__)
+    // Use modern IOConnectCallStructMethod for all current macOS versions
     err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
-#else
-    if (IOConnectCallStructMethod != NULL) {
-        /* OSX 10.5 or newer API is available */
-        err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
-    }
-    else {
-        /* Use old API (not available for x86_64) */
-        err = IOConnectMethodStructureIStructureO(connect, index, dataInLen, dataOutLen, in, out);
-    }
-#endif
     return err;
 }
 
