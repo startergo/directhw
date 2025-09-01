@@ -232,6 +232,35 @@ vpddecode             # VPD decoding via DirectHW
 - ❌ **MSR Access** - Model Specific Registers don't exist on ARM architecture
 - ❌ **CPUID Instructions** - x86-specific instruction not available on ARM
 - ❌ **Multi-Core CPU Targeting** - Limited to single-core operations
+<<<<<<< HEAD
+=======
+- ⚠️ **Kext Development Mode** - `kext-dev-mode=1` boot argument may not work reliably
+- ⚠️ **Boot-Args Modifications** - Largely ineffective and can cause boot issues
+- ⚠️ **Debug Flags** - Traditional debug flags like `debug=0x144` may be ignored
+
+### Apple Silicon Boot-Args Limitations
+**Important**: Apple's enhanced security on Apple Silicon makes traditional boot-args modifications largely ineffective and potentially dangerous:
+
+#### **What Doesn't Work Reliably**
+```bash
+# These may be ignored or cause boot issues on Apple Silicon:
+sudo nvram boot-args="debug=0x144"                    # Often ignored
+sudo nvram boot-args="kext-dev-mode=1"               # Unreliable
+sudo nvram boot-args="debug=0x14e kext-dev-mode=1"   # May cause problems
+```
+
+#### **What Does Work (With Caveats)**
+```bash
+# Only works if Startup Security is set to Permissive:
+sudo nvram boot-args="amfi_get_out_of_my_way=1 -arm64e_preview_abi"
+```
+
+#### **Recommended Apple Silicon Approach**
+1. **Set Startup Security to Permissive** (Recovery Mode → Startup Security Utility)
+2. **Use self-signed certificates** for kext development
+3. **Avoid boot-args modifications** unless absolutely necessary
+4. **Use `dmesg` for kernel debugging** instead of boot-args debug flags
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 
 ### ARM64 Code Behavior
 ```c
@@ -239,6 +268,7 @@ vpddecode             # VPD decoding via DirectHW
 msr_t msr = rdmsr(0x1A0);          // Returns { .hi = 0, .lo = 0 }
 rdcpuid(0x80000008, 0, cpudata);   // Returns cpudata[0-3] = 0
 outb(0x80, 0xFF);                  // No operation performed
+<<<<<<< HEAD
 ```
 
 ### Recommended Apple Silicon Usage
@@ -260,6 +290,68 @@ if (allocate_physically_contiguous_32(65536, &physAddr, &userAddr, &bufferType) 
     unallocate_mem(bufferType);
 }
 ```
+=======
+
+// Kext development mode may not work reliably on Apple Silicon
+// Use self-signed certificates for kext development instead
+```
+
+### Recommended Apple Silicon Development Setup
+For Apple Silicon Macs, the most reliable approach is to use **self-signed certificates** instead of `kext-dev-mode=1`:
+
+```bash
+# Create self-signed certificate for Apple Silicon development
+sudo security create-keychain -p "" /Library/Keychains/DirectHW.keychain
+sudo security create-keychain-item /Library/Keychains/DirectHW.keychain \
+  -k "" -w "" -C "DirectHW Development" -d
+
+# Sign the kext
+codesign --force --sign "DirectHW Development" /Library/Extensions/DirectHW.kext
+
+# Load the signed kext
+sudo kextload /Library/Extensions/DirectHW.kext
+```
+
+**Note**: `kext-dev-mode=1` boot argument may not work reliably on Apple Silicon due to Apple's enhanced security architecture.
+
+### Apple Silicon Kernel Debugging
+**⚠️ Important**: On Apple Silicon Macs, traditional boot-args modifications are largely ineffective and can cause boot issues. For kernel debugging on Apple Silicon:
+
+#### **Recommended Approach: Startup Security Utility**
+1. **Boot into Recovery Mode** (⌘+R during startup)
+2. **Open Startup Security Utility** from the menu bar
+3. **Set to "Permissive Security"** (allows unsigned kexts)
+4. **Reboot normally**
+
+#### **NVRAM Behavior on Apple Silicon**
+**Important**: Apple Silicon Macs handle NVRAM differently than Intel Macs:
+
+- **No Manual Reset Required**: Apple Silicon performs automatic NVRAM checks on each cold boot
+- **No Key Combinations**: Unlike Intel Macs, there's no Command+Option+P+R combination
+- **Automatic Reset**: If NVRAM corruption is detected, the system resets it automatically
+- **Force Reset**: Simply shut down completely, wait a few seconds, then power back on
+
+#### **Limited Boot-Args Support**
+For specific advanced settings that do work on Apple Silicon:
+```bash
+# This may work if Startup Security is set to Permissive:
+sudo nvram boot-args="amfi_get_out_of_my_way=1 -arm64e_preview_abi"
+
+# But traditional debug flags like debug=0x144 may be ignored
+# Use self-signed certificates + Startup Security Utility instead
+```
+
+#### **Best Practice for Apple Silicon**
+```bash
+# 1. Set Startup Security to Permissive (Recovery Mode)
+# 2. Use self-signed certificates for kext signing
+# 3. Avoid boot-args modifications unless absolutely necessary
+# 4. Let the system handle NVRAM automatically
+# 5. Monitor kernel messages with dmesg for debugging
+```
+
+**Note**: Unlike Intel Macs, Apple Silicon systems have protected boot processes that make boot-args modifications unreliable and potentially dangerous. The system handles NVRAM maintenance automatically.
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 </details>
 
 ## Installation & Usage
@@ -284,6 +376,94 @@ DirectHW requires loading a kernel extension, which requires SIP modification on
    ```
 4. **Reboot** into normal macOS
 
+<<<<<<< HEAD
+=======
+### Code Signing Requirements
+
+<details>
+<summary><strong>Package & Kext Signing</strong></summary>
+
+#### Package Signing
+- **Development/Local Use**: No signing required - unsigned packages work fine
+- **No Apple Developer ID needed** for local installation and testing
+- **CI/CD Pipelines**: Can use unsigned packages for automated testing
+- **Production Distribution**: Consider signing for professional distribution
+
+#### Kernel Extension Signing
+DirectHW.kext requires signing to load properly, but you have several options:
+
+**Option 1: Self-Signed Certificate (Recommended for Development)**
+```bash
+# Create self-signed certificate for development
+sudo security create-keychain -p "" /Library/Keychains/DirectHW.keychain
+sudo security create-keychain-item /Library/Keychains/DirectHW.keychain \
+  -k "" -w "" -C "DirectHW Development" -d
+
+# Sign the kext
+codesign --force --sign "DirectHW Development" /Library/Extensions/DirectHW.kext
+```
+
+**Option 2: Development Mode (Easiest)**
+```bash
+# Check current boot args first
+nvram boot-args
+
+# Add kext-dev-mode to existing boot args (preserves other settings)
+CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
+if [[ -z "$CURRENT_ARGS" ]]; then
+    sudo nvram boot-args="debug=0x144 kext-dev-mode=1"
+else
+    # Ensure debug=0x144 is included as minimum
+    if [[ "$CURRENT_ARGS" != *"debug="* ]]; then
+        sudo nvram boot-args="$CURRENT_ARGS debug=0x144 kext-dev-mode=1"
+    else
+        sudo nvram boot-args="$CURRENT_ARGS kext-dev-mode=1"
+    fi
+fi
+
+# Reboot to apply changes
+sudo reboot
+
+# After reboot, kexts can load without signing
+```
+
+**⚠️ Apple Silicon NVRAM Limitations**: On Apple Silicon Macs, the boot-args NVRAM variable is largely inaccessible to users. Changes are often ignored or can lead to boot issues due to Apple's enhanced security. The `sudo nvram boot-args` command doesn't work the same as on Intel Macs and attempting to force arguments can be dangerous, potentially requiring system reinstall. For Apple Silicon development, **use self-signed certificates instead of boot-args modifications**.
+
+**Note**: If `nvram boot-args` returns "data was not found", this is normal - it means no boot arguments are currently set. The commands below will handle this automatically.
+
+**⚠️ Apple Silicon Boot-Args Warning**: On Apple Silicon Macs, boot-args modifications are largely ineffective and can cause boot issues. For Apple Silicon development:
+- Use **Startup Security Utility** set to "Permissive Security" (accessed in Recovery Mode)
+- Use **self-signed certificates** for kext signing instead of boot-args
+- Avoid boot-args modifications unless you have specific advanced needs and understand the risks
+- **Apple Silicon handles NVRAM automatically** - no manual reset is needed or possible
+
+**Option 3: Production Signing (Apple Developer Program)**
+```bash
+# For production distribution, use Apple-signed certificate
+codesign --force --sign "Developer ID Application: Your Name" DirectHW.kext
+```
+
+#### Signing Status Check
+```bash
+# Check package signature
+pkgutil --check-signature DirectHW.pkg
+
+# Check kext signature
+codesign --verify --verbose /Library/Extensions/DirectHW.kext
+
+# Check current SIP status
+csrutil status
+```
+
+| Environment | Package Signing | Kext Signing | Requirements |
+|-------------|----------------|--------------|--------------|
+| **Local Development (Intel)** | ❌ Not required | ⚠️ Self-signed or dev mode | None |
+| **Local Development (Apple Silicon)** | ❌ Not required | ⚠️ **Self-signed recommended** (dev mode limited) | None |
+| **CI/CD Testing** | ❌ Not required | ⚠️ Self-signed or dev mode | None |
+| **Production** | ⚠️ Recommended | ✅ Required (Apple-signed) | Apple Developer Program |
+</details>
+
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 ### Option 1: Installer Package (Recommended)
 1. Download the latest DMG from [Releases](../../releases)
 2. Mount the DMG and run `Install DirectHW.pkg`
@@ -291,6 +471,17 @@ DirectHW requires loading a kernel extension, which requires SIP modification on
 4. Restart your system to load the kernel extension
 5. Verify installation: `kextstat | grep DirectHW`
 
+<<<<<<< HEAD
+=======
+**System-Agnostic Installation Notes:**
+- The installer automatically detects your macOS version and installs to the appropriate locations
+- **macOS 10.9+**: Installs to `/Library/Extensions` and `/Library/Frameworks` (user-accessible)
+- **macOS 10.8 and earlier**: Installs to `/System/Library/Extensions` and `/System/Library/Frameworks`
+- The post-install script handles kext cache updates using the correct method for your macOS version
+- **macOS 10.13+**: Uses `kmutil` for kext cache management
+- **macOS 10.12 and earlier**: Uses `kextcache` for kext cache management
+
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 ### Option 2: Manual Installation
 ```bash
 # Install kernel extension
@@ -330,11 +521,42 @@ nvram boot-args
 
 # Add kernel debugging to existing boot args (preserves other settings)
 CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
+<<<<<<< HEAD
 sudo nvram boot-args="$CURRENT_ARGS debug=0x144"
 
 # Alternative: Add multiple debug flags to existing args
 CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
 sudo nvram boot-args="$CURRENT_ARGS debug=0x14e kext-dev-mode=1"
+=======
+if [[ -z "$CURRENT_ARGS" ]]; then
+    sudo nvram boot-args="debug=0x144"
+else
+    # Ensure minimum debug level is set
+    if [[ "$CURRENT_ARGS" != *"debug="* ]]; then
+        sudo nvram boot-args="$CURRENT_ARGS debug=0x144"
+    else
+        # Debug already set, just add if not present
+        if [[ "$CURRENT_ARGS" != *"debug=0x144"* ]]; then
+            echo "⚠️  Warning: Existing debug level may not provide sufficient kernel debugging"
+            echo "   Consider using debug=0x144 for better kernel extension debugging"
+        fi
+        sudo nvram boot-args="$CURRENT_ARGS"
+    fi
+fi
+
+# Alternative: Add multiple debug flags to existing args
+CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
+if [[ -z "$CURRENT_ARGS" ]]; then
+    sudo nvram boot-args="debug=0x14e kext-dev-mode=1"
+else
+    # Ensure minimum debug level and add kext-dev-mode
+    if [[ "$CURRENT_ARGS" != *"debug="* ]]; then
+        sudo nvram boot-args="$CURRENT_ARGS debug=0x14e kext-dev-mode=1"
+    else
+        sudo nvram boot-args="$CURRENT_ARGS kext-dev-mode=1"
+    fi
+fi
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 
 # View kernel messages in real-time
 sudo dmesg -w | grep DirectHW
@@ -349,6 +571,11 @@ sudo nvram boot-args="$CLEAN_ARGS"
 - `debug=0x144` = Basic kernel debugging + panic debugging
 - `debug=0x14e` = Enhanced debugging with detailed kernel messages
 - `kext-dev-mode=1` = Enable development mode for unsigned kernel extensions
+<<<<<<< HEAD
+=======
+
+**Apple Silicon Note**: `debug=0x144` and other boot-args may be ignored on Apple Silicon due to enhanced security. Use Startup Security Utility set to "Permissive Security" + self-signed certificates for the most reliable DirectHW development experience on ARM64 Macs.
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 </details>
 
 <details>
@@ -483,7 +710,25 @@ sudo dmesg | grep DirectHW
 
 # Enable detailed kernel debugging (requires reboot)
 CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
+<<<<<<< HEAD
 sudo nvram boot-args="$CURRENT_ARGS debug=0x144"
+=======
+if [[ -z "$CURRENT_ARGS" ]]; then
+    sudo nvram boot-args="debug=0x144"
+else
+    # Ensure minimum debug level is set
+    if [[ "$CURRENT_ARGS" != *"debug="* ]]; then
+        sudo nvram boot-args="$CURRENT_ARGS debug=0x144"
+    else
+        # Debug already set, just preserve existing args
+        sudo nvram boot-args="$CURRENT_ARGS"
+    fi
+fi
+
+# Note: On Apple Silicon, boot-args changes may be ignored due to enhanced security
+# For Apple Silicon: Use Startup Security Utility (Permissive) + self-signed certificates
+# Apple Silicon handles NVRAM automatically - no manual reset needed
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 
 # Check SIP status (most common issue)
 csrutil status
@@ -517,9 +762,28 @@ ls -la /Library/Extensions/DirectHW.kext
 sudo kextload -v /Library/Extensions/DirectHW.kext
 
 # Enable kernel debugging for detailed load information
+<<<<<<< HEAD
 sudo nvram boot-args="debug=0x144 kext-dev-mode=1"
 # Reboot, then try loading again
 
+=======
+CURRENT_ARGS=$(nvram boot-args 2>/dev/null | cut -d$'\t' -f2)
+if [[ -z "$CURRENT_ARGS" ]]; then
+    sudo nvram boot-args="debug=0x144 kext-dev-mode=1"
+else
+    # Ensure minimum debug level is set
+    if [[ "$CURRENT_ARGS" != *"debug="* ]]; then
+        sudo nvram boot-args="$CURRENT_ARGS debug=0x144 kext-dev-mode=1"
+    else
+        sudo nvram boot-args="$CURRENT_ARGS kext-dev-mode=1"
+    fi
+fi
+# Reboot, then try loading again
+
+# Note: On Apple Silicon, use Startup Security Utility (Permissive Security)
+# instead of boot-args modifications for more reliable results
+
+>>>>>>> ce5b6ff (feat: Comprehensive DirectHW improvements and CI/CD enhancements)
 # Check system preferences for kernel extension approval
 open "/System/Library/PreferencePanes/Security.prefPane"
 
