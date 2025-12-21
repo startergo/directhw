@@ -35,6 +35,10 @@ macos_version := $(DETECTED_VERSION)
 # Version comparisons using proper macOS version detection
 # Convert to integer format (major*10000 + minor*100 + patch) for proper comparison
 is_sequoia_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 150000)
+
+# Detect build machine architecture for universal binary decisions
+build_arch := $(shell uname -m)
+is_arm64_build := $(if $(filter arm64,$(build_arch)),1,0)
 is_sonoma_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 140000)
 is_ventura_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 130000)
 is_monterey_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 120000)
@@ -59,42 +63,67 @@ build := build/buildlatest
 extensions := /System/Library/Extensions
 debugsym :=
 sdk := -sdk macosx
+# Default deployment target for older systems
 deploy := MACOSX_DEPLOYMENT_TARGET=10.3
 arch :=
 # Use proper macOS version detection for build configuration
 ifneq ($(is_sequoia_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build15
+	# Modern Xcode (16.4+) can still build for 10.6+ deployment
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+ifeq ($(is_arm64_build),1)
+	# Apple Silicon build machine - create universal binary
 	arch := -arch x86_64 -arch arm64
+else
+	# Intel build machine - x86_64 only
+	arch := -arch x86_64
+endif
 else ifneq ($(is_sonoma_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build14
 	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+ifeq ($(is_arm64_build),1)
 	arch := -arch x86_64 -arch arm64
+else
+	arch := -arch x86_64
+endif
 else ifneq ($(is_ventura_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build13
 	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+ifeq ($(is_arm64_build),1)
 	arch := -arch x86_64 -arch arm64
+else
+	arch := -arch x86_64
+endif
 else ifneq ($(is_monterey_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build12
 	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+ifeq ($(is_arm64_build),1)
 	arch := -arch x86_64 -arch arm64
+else
+	arch := -arch x86_64
+endif
 else ifneq ($(is_big_sur_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build11
 	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+ifeq ($(is_arm64_build),1)
 	arch := -arch x86_64 -arch arm64
+else
+	arch := -arch x86_64
+endif
 else ifneq ($(is_catalina_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build10.15
 	sdk := -sdk macosx
+	# Catalina (10.15+) dropped 32-bit support completely
 	arch := -arch x86_64
 else ifneq ($(is_mojave_or_later), 0)
 	proj := DirectHW.xcodeproj
@@ -173,10 +202,21 @@ main:
 libs: DirectHW.c DirectHW.h
 	mkdir -p $(build)/Release
 ifneq ($(is_big_sur_or_later)$(is_monterey_or_later)$(is_ventura_or_later)$(is_sonoma_or_later)$(is_sequoia_or_later),0)
+ifeq ($(is_arm64_build),1)
+	# Apple Silicon build machine - create universal binary
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+else
+	# Intel build machine - x86_64 only for Apple Silicon era macOS
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+endif
+else ifneq ($(is_catalina_or_later),0)
+	# Catalina (10.15+) - 64-bit only
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
+	# Mojave (10.14) and High Sierra (10.13) - last versions with 32-bit support
 	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else
+	# Older systems - 64-bit only (no ARM64 support)
 	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 endif
 	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
@@ -185,10 +225,21 @@ libs-fallback: DirectHW.c DirectHW.h
 	@echo "=== Building with Command Line Tools (fallback) ==="
 	mkdir -p $(build)/Release
 ifneq ($(is_big_sur_or_later)$(is_monterey_or_later)$(is_ventura_or_later)$(is_sonoma_or_later)$(is_sequoia_or_later),0)
+ifeq ($(is_arm64_build),1)
+	# Apple Silicon build machine - create universal binary
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+else
+	# Intel build machine - x86_64 only for Apple Silicon era macOS
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+endif
+else ifneq ($(is_catalina_or_later),0)
+	# Catalina (10.15+) - 64-bit only
+	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
+	# Mojave (10.14) and High Sierra (10.13) - last versions with 32-bit support
 	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else
+	# Older systems - 64-bit only (no ARM64 support)
 	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 endif
 	#$(CC) -static -c DirectHW.c -o $(build)/Release/libDirectHW.a
