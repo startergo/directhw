@@ -217,39 +217,44 @@ jobs:
           
           # Copy build artifacts - check multiple possible build directories
           ARTIFACTS_FOUND=false
-          for BUILD_DIR in "DirectHW/build/buildlatest/Release" "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
+
+          # First check for distribution package (preferred)
+          if [ -f "DirectHW/DirectHW.pkg" ]; then
+            cp "DirectHW/DirectHW.pkg" "dmg_contents/Install DirectHW.pkg"
+            echo "✅ Copied distribution package"
+            ARTIFACTS_FOUND=true
+          else
+            # Fallback to individual component packages
+            for PKG in "DirectHW/DirectHW-lib.pkg" "DirectHW/DirectHW-kext.pkg" "DirectHW/DirectHW-framework.pkg"; do
+              if [ -f "$PKG" ]; then
+                cp "$PKG" "dmg_contents/$(basename "$PKG")"
+                echo "✅ Copied $(basename "$PKG")"
+                ARTIFACTS_FOUND=true
+              fi
+            done
+          fi
+
+          # Also check for build directory artifacts
+          for BUILD_DIR in "DirectHW/build/build15/Release" "DirectHW/build/buildlatest/Release" "DirectHW/build/build11/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
             if [ -d "$BUILD_DIR" ]; then
               echo "📁 Found build directory for DMG: $BUILD_DIR"
-              
+
               # Copy available artifacts (may not have all types due to build failures)
               find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found kext files" && ARTIFACTS_FOUND=true
               find "$BUILD_DIR" -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found framework files" && ARTIFACTS_FOUND=true
               find "$BUILD_DIR" -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found library files" && ARTIFACTS_FOUND=true
               find "$BUILD_DIR" -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found static library files" && ARTIFACTS_FOUND=true
-              
+
               # If we found at least the library, consider it successful
               if [ -f "$BUILD_DIR/libDirectHW.dylib" ]; then
                 ARTIFACTS_FOUND=true
                 echo "✅ Core library found - DMG creation possible"
               fi
-              
+
               break  # Use first found build directory
             fi
           done
-          
-          # Copy package if it exists (prefer distribution package, fallback to individual packages)
-          if [ -f "DirectHW/DirectHW.pkg" ]; then
-            cp "DirectHW/DirectHW.pkg" "dmg_contents/Install DirectHW.pkg"
-            echo "✅ Copied distribution package"
-            ARTIFACTS_FOUND=true
-          elif [ -f "DirectHW/DirectHW-lib.pkg" ]; then
-            cp "DirectHW/DirectHW-lib.pkg" "dmg_contents/DirectHW-lib.pkg" 2>/dev/null || echo "⚠️  Library package not found"
-            cp "DirectHW/DirectHW-kext.pkg" "dmg_contents/DirectHW-kext.pkg" 2>/dev/null || echo "⚠️  Kext package not found"
-            cp "DirectHW/DirectHW-framework.pkg" "dmg_contents/DirectHW-framework.pkg" 2>/dev/null || echo "⚠️  Framework package not found"
-            echo "✅ Copied available component packages"
-            ARTIFACTS_FOUND=true
-          fi
-          
+
           # Copy documentation
           if [ -f "DirectHW/ReadMe.rtf" ]; then
             cp "DirectHW/ReadMe.rtf" "dmg_contents/Read Me.rtf"
