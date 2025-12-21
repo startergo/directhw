@@ -85,7 +85,15 @@ jobs:
         
       - name: libs
         working-directory: ./DirectHW
-        run: make main
+        run: make libs
+
+      - name: Debug Build Outputs
+        working-directory: ./DirectHW
+        run: |
+          echo "=== Searching for all build outputs ==="
+          find . -name "*.dylib" -o -name "*.kext" -o -name "*.framework" | head -20
+          echo "=== Build directory structure ==="
+          ls -R build/ 2>/dev/null || echo "No build directory"
 
       - name: Create Package
         working-directory: ./DirectHW
