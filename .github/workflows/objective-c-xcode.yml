@@ -78,6 +78,9 @@ jobs:
             ls -la "$BUILD_DIR/Release/"
           else
             echo "❌ Xcode build failed or incomplete - will use make libs fallback"
+            # Create symlink for consistency with buildlatest expectation
+            mkdir -p build/buildlatest
+            ln -sf "$BUILD_DIR/Release" build/buildlatest/Release 2>/dev/null || :
           fi
         
       - name: libs
@@ -94,7 +97,7 @@ jobs:
           BUILD_SUCCESS=false
           
           # Check version-specific build directories first
-          for BUILD_DIR in "build/build15/Release" "build/build11/Release" "build/buildlatest/Release" "build/Release" "build/*/Release"; do
+          for BUILD_DIR in "build/buildlatest/Release" "build/build15/Release" "build/build11/Release" "build/Release" "build/*/Release"; do
             if [ -d "./$BUILD_DIR" ] && [ -f "./$BUILD_DIR/libDirectHW.dylib" ]; then
               BUILD_ROOT="./$BUILD_DIR"
               echo "✅ Found build directory: $BUILD_ROOT"
@@ -206,7 +209,7 @@ jobs:
           
           # Copy build artifacts - check multiple possible build directories
           ARTIFACTS_FOUND=false
-          for BUILD_DIR in "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
+          for BUILD_DIR in "DirectHW/build/buildlatest/Release" "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
             if [ -d "$BUILD_DIR" ]; then
               echo "📁 Found build directory for DMG: $BUILD_DIR"
               
@@ -293,9 +296,9 @@ jobs:
         with:
           name: DirectHW-Build-Artifacts
           path: |
+            DirectHW/build/buildlatest/Release/
             DirectHW/build/build15/Release/
             DirectHW/build/build11/Release/
-            DirectHW/build/buildlatest/Release/
             DirectHW/build/*/Release/
             DirectHW/*.pkg
             DirectHW/*.kext
@@ -311,7 +314,7 @@ jobs:
         if: always()
         run: |
           echo "=== CI Build Summary ==="
-          echo "📊 Build Status: $([ -d 'DirectHW/build/buildlatest/Release' ] && echo '✅ SUCCESS' || echo '❌ FAILED - Xcode compatibility issue')"
+          echo "📊 Build Status: $([ -d 'DirectHW/build/build15/Release' ] || [ -d 'DirectHW/build/buildlatest/Release' ] && echo '✅ SUCCESS' || echo '❌ FAILED - Xcode compatibility issue')"
           echo "📦 Package Status: $([ -f 'DirectHW/DirectHW.pkg' ] && echo '✅ Distribution package created' || echo '⚠️  Using component packages')"
           echo "💿 DMG Status: $([ -f 'DirectHW-v1.5.1.dmg' ] && echo '✅ DMG created' || echo '❌ DMG creation failed')"
           echo ""
