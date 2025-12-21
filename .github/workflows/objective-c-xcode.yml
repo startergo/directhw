@@ -19,7 +19,7 @@ jobs:
       - name: Check Environment
         run: |
           echo "=== CI Environment Info ==="
-          echo "macOS Version: $(swvers -productVersion)"
+          echo "macOS Version: $(sw_vers -productVersion)"
           echo "Xcode Version: $(xcodebuild -version | head -1)"
           echo "Available SDKs:"
           xcodebuild -showsdks | grep -E "(macOS|MacOSX)" || echo "No macOS SDKs found"
@@ -30,27 +30,44 @@ jobs:
       - name: Xcodebuild (Unsigned for CI)
         working-directory: ./DirectHW
         run: |
-          # Build without signing for CI/CD - users can sign locally if needed
-          echo "=== Starting Xcode Build ==="
-          xcodebuild -alltargets -project DirectHW.xcodeproj \
+          # Detect macOS version for proper project selection
+          MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1)
+          echo "macOS major version: $MACOS_VERSION"
+          
+          # Choose appropriate Xcode project based on macOS version
+          if [ "$MACOS_VERSION" -ge 15 ]; then
+            echo "Using modern DirectHW.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW.xcodeproj"
+            BUILD_DIR="build/build15"
+          elif [ "$MACOS_VERSION" -ge 11 ]; then
+            echo "Using modern DirectHW.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW.xcodeproj"
+            BUILD_DIR="build/build11"
+          else
+            echo "Using legacy DirectHW10.6.xcodeproj for macOS $MACOS_VERSION"
+            XCODE_PROJ="DirectHW10.6.xcodeproj"
+            BUILD_DIR="build/build10.6"
+          fi
+          
+          echo "=== Starting Xcode Build with $XCODE_PROJ ==="
+          xcodebuild -alltargets -project "$XCODE_PROJ" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            -verbose || echo "Xcode build failed - this is expected with Xcode 16.4 and older SDKs"
+            SYMROOT="$BUILD_DIR" \
+            -verbose || echo "Xcode build failed - this is expected with modern Xcode and older projects"
           
           # Check if build succeeded
-          if [ -d "build/buildlatest/Release" ]; then
-            echo "✅ Build succeeded - found build artifacts"
-            ls -la build/buildlatest/Release/
+          if [ -d "$BUILD_DIR/Release" ] && [ -f "$BUILD_DIR/Release/libDirectHW.dylib" ]; then
+            echo "✅ Xcode build succeeded"
+            ls -la "$BUILD_DIR/Release/"
           else
-            echo "❌ Build failed - no artifacts found"
-            echo "This is likely due to Xcode 16.4 SDK compatibility issues"
-            echo "For production builds, use Xcode 15.x or earlier"
+            echo "❌ Xcode build failed or incomplete - will use make libs fallback"
           fi
         
       - name: libs
         working-directory: ./DirectHW
-        run: make libs
+        run: make main
 
       - name: Create Package
         working-directory: ./DirectHW
@@ -61,8 +78,9 @@ jobs:
           BUILD_ROOT=""
           BUILD_SUCCESS=false
           
-          for BUILD_DIR in "build/buildlatest/Release" "build/Release" "build/*/Release"; do
-            if [ -d "./$BUILD_DIR" ]; then
+          # Check version-specific build directories first
+          for BUILD_DIR in "build/build15/Release" "build/build11/Release" "build/buildlatest/Release" "build/Release" "build/*/Release"; do
+            if [ -d "./$BUILD_DIR" ] && [ -f "./$BUILD_DIR/libDirectHW.dylib" ]; then
               BUILD_ROOT="./$BUILD_DIR"
               echo "✅ Found build directory: $BUILD_ROOT"
               BUILD_SUCCESS=true
@@ -187,13 +205,22 @@ jobs:
           
           # Copy build artifacts - check multiple possible build directories
           ARTIFACTS_FOUND=false
-          for BUILD_DIR in "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
+          for BUILD_DIR in "DirectHW/build/build15/Release" "DirectHW/build/build11/Release" "DirectHW/build/buildlatest/Release" "DirectHW/build/Release" "DirectHW/build/*/Release"; do
             if [ -d "$BUILD_DIR" ]; then
               echo "📁 Found build directory for DMG: $BUILD_DIR"
-              find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
-              find "$BUILD_DIR" -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null && ARTIFACTS_FOUND=true
+              
+              # Copy available artifacts (may not have all types due to build failures)
+              find "$BUILD_DIR" -name "*.kext" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found kext files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.framework" -exec cp -r {} dmg_contents/ \; 2>/dev/null && echo "✅ Found framework files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.dylib" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found library files" && ARTIFACTS_FOUND=true
+              find "$BUILD_DIR" -name "*.a" -exec cp {} dmg_contents/ \; 2>/dev/null && echo "✅ Found static library files" && ARTIFACTS_FOUND=true
+              
+              # If we found at least the library, consider it successful
+              if [ -f "$BUILD_DIR/libDirectHW.dylib" ]; then
+                ARTIFACTS_FOUND=true
+                echo "✅ Core library found - DMG creation possible"
+              fi
+              
               break  # Use first found build directory
             fi
           done
@@ -204,10 +231,10 @@ jobs:
             echo "✅ Copied distribution package"
             ARTIFACTS_FOUND=true
           elif [ -f "DirectHW/DirectHW-lib.pkg" ]; then
-            cp "DirectHW/DirectHW-lib.pkg" "dmg_contents/DirectHW-lib.pkg"
-            cp "DirectHW/DirectHW-kext.pkg" "dmg_contents/DirectHW-kext.pkg" 2>/dev/null
-            cp "DirectHW/DirectHW-framework.pkg" "dmg_contents/DirectHW-framework.pkg" 2>/dev/null
-            echo "✅ Copied component packages"
+            cp "DirectHW/DirectHW-lib.pkg" "dmg_contents/DirectHW-lib.pkg" 2>/dev/null || echo "⚠️  Library package not found"
+            cp "DirectHW/DirectHW-kext.pkg" "dmg_contents/DirectHW-kext.pkg" 2>/dev/null || echo "⚠️  Kext package not found"
+            cp "DirectHW/DirectHW-framework.pkg" "dmg_contents/DirectHW-framework.pkg" 2>/dev/null || echo "⚠️  Framework package not found"
+            echo "✅ Copied available component packages"
             ARTIFACTS_FOUND=true
           fi
           
@@ -228,12 +255,26 @@ jobs:
           if [ "$ARTIFACTS_FOUND" = true ] && [ "$(ls -A dmg_contents/)" ]; then
             echo "🎯 Creating DMG with found content"
             # Create DMG using hdiutil (more reliable than create-dmg in CI)
-            hdiutil create -volname "DirectHW v1.5.1" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg && echo "✅ DMG created successfully" || echo "❌ DMG creation failed"
+            hdiutil create -volname "DirectHW v1.5.1" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg
+            if [ $? -eq 0 ]; then
+              echo "✅ DMG created successfully"
+            else
+              echo "❌ DMG creation failed"
+              exit 1
+            fi
           else
             echo "⚠️  No content for DMG, creating minimal DMG for CI testing"
             # Create a minimal DMG with just documentation for CI testing
             echo "DirectHW CI Test - Build artifacts not available due to Xcode compatibility issues" > dmg_contents/README.txt
-            hdiutil create -volname "DirectHW CI Test" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg && echo "✅ Minimal DMG created for CI testing" || echo "❌ Minimal DMG creation failed"
+            echo "This DMG contains only documentation. Full build artifacts were not generated." >> dmg_contents/README.txt
+            echo "This is expected with Xcode 16.4 and older macOS SDK targets." >> dmg_contents/README.txt
+            hdiutil create -volname "DirectHW CI Test" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg
+            if [ $? -eq 0 ]; then
+              echo "✅ Minimal DMG created for CI testing"
+            else
+              echo "❌ Minimal DMG creation failed"
+              exit 1
+            fi
           fi
 
       - name: Upload DMG Artifact
@@ -252,6 +293,8 @@ jobs:
         with:
           name: DirectHW-Build-Artifacts
           path: |
+            DirectHW/build/build15/Release/
+            DirectHW/build/build11/Release/
             DirectHW/build/buildlatest/Release/
             DirectHW/build/*/Release/
             DirectHW/*.pkg
