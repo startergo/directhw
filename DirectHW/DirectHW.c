@@ -114,10 +114,14 @@ kern_return_t MyIOConnectCallStructMethod(
     /* Use modern IOConnectCallStructMethod for 64-bit systems */
     err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
 #else
-    /* For 32-bit systems with transitional APIs, try IOConnectCallStructMethod first */
-    err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
-    if (err != KERN_SUCCESS) {
-        /* Fallback to IOConnectMethodStructureIStructureO for compatibility */
+    /* For 32-bit systems with transitional APIs (Mac OS X 10.5-10.7),
+     * determine which API to use based on availability at compile time.
+     * Use weak linking to check API availability at runtime. */
+    if (&IOConnectCallStructMethod != NULL) {
+        /* Modern API is available, use it */
+        err = IOConnectCallStructMethod(connect, index, in, dataInLen, out, dataOutLen);
+    } else {
+        /* Modern API not available, use legacy API */
         err = IOConnectMethodStructureIStructureO(connect, index, dataInLen, dataOutLen, in, out);
     }
 #endif

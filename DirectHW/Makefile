@@ -40,20 +40,21 @@ is10_4 := $(shell bc <<< "$${OSTYPE\#darwin} == 8")
 macos_version := 0$(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 || sw_vers 2>/dev/null | perl -ne 'if (/ProductVersion:\s*(\d+(\.\d+)?)/) { print $$1 }' | cut -d. -f1-2)
 
 # Version comparisons using proper macOS version detection
-is_sequoia_or_later := $(shell echo "$(macos_version) >= 15.0" | bc -l 2>/dev/null || echo "0")
-is_big_sur_or_later := $(shell echo "$(macos_version) >= 11.0" | bc -l 2>/dev/null || echo "0")
-is_catalina_or_later := $(shell echo "$(macos_version) >= 10.15" | bc -l 2>/dev/null || echo "0")
-is_mojave_or_later := $(shell echo "$(macos_version) >= 10.14" | bc -l 2>/dev/null || echo "0")
-is_high_sierra_or_later := $(shell echo "$(macos_version) >= 10.13" | bc -l 2>/dev/null || echo "0")
-is_sierra_or_later := $(shell echo "$(macos_version) >= 10.12" | bc -l 2>/dev/null || echo "0")
-is_el_capitan_or_later := $(shell echo "$(macos_version) >= 10.11" | bc -l 2>/dev/null || echo "0")
-is_yosemite_or_later := $(shell echo "$(macos_version) >= 10.10" | bc -l 2>/dev/null || echo "0")
-is_mavericks_or_later := $(shell echo "$(macos_version) >= 10.9" | bc -l 2>/dev/null || echo "0")
-is_mountain_lion_or_later := $(shell echo "$(macos_version) >= 10.8" | bc -l 2>/dev/null || echo "0")
-is_lion_or_later := $(shell echo "$(macos_version) >= 10.7" | bc -l 2>/dev/null || echo "0")
-is_snow_leopard_or_later := $(shell echo "$(macos_version) >= 10.6" | bc -l 2>/dev/null || echo "0")
-is_leopard_or_later := $(shell echo "$(macos_version) >= 10.5" | bc -l 2>/dev/null || echo "0")
-is_tiger_or_later := $(shell echo "$(macos_version) >= 10.4" | bc -l 2>/dev/null || echo "0")
+# Convert to integer format (major*10000 + minor*100 + patch) for proper comparison
+is_sequoia_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 150000)
+is_big_sur_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 110000)
+is_catalina_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101500)
+is_mojave_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101400)
+is_high_sierra_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101300)
+is_sierra_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101200)
+is_el_capitan_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101100)
+is_yosemite_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101000)
+is_mavericks_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100900)
+is_mountain_lion_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100800)
+is_lion_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100700)
+is_snow_leopard_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100600)
+is_leopard_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100500)
+is_tiger_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 100400)
 
 # latestsdk := $(shell xcodebuild -showsdks | sort -r | sed -nE '/.*(-sdk macosx.*)/ { s//\1/;p;q; }')
 
@@ -62,18 +63,20 @@ build := build/buildlatest
 extensions := /System/Library/Extensions
 debugsym :=
 sdk := -sdk macosx
-deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+deploy := MACOSX_DEPLOYMENT_TARGET=10.3
 arch :=
 # Use proper macOS version detection for build configuration
 ifneq ($(is_sequoia_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build15
 	sdk := -sdk macosx
+	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 	arch := -arch x86_64 -arch arm64
 else ifneq ($(is_big_sur_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build11
 	sdk := -sdk macosx
+	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 	arch := -arch x86_64 -arch arm64
 else ifneq ($(is_catalina_or_later), 0)
 	proj := DirectHW.xcodeproj
@@ -84,12 +87,12 @@ else ifneq ($(is_mojave_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build10.14
 	sdk := -sdk macosx10.14
-	arch := -arch x86_64
+	arch := -arch i386 -arch x86_64
 else ifneq ($(is_high_sierra_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build10.13
 	sdk := -sdk macosx10.13
-	arch := -arch x86_64
+	arch := -arch i386 -arch x86_64
 else ifneq ($(is_sierra_or_later), 0)
 	proj := DirectHW10.6.xcodeproj
 	build := build/build10.12
@@ -141,15 +144,25 @@ endif
 
 main:
 	@echo "=== Attempting Xcode build ===" && \
-	xcodebuild -alltargets -project $(proj) $(sdk) $(deploy) $(arch) SYMROOT=$(build) 2>/dev/null && \
-	echo "✅ Xcode build succeeded" || \
-	(echo "❌ Xcode build failed, falling back to Command Line Tools" && \
-	 $(MAKE) libs-fallback)
+	BUILD_LOG="$(build)/xcode_build.log" && \
+	mkdir -p $(build) && \
+	if xcodebuild -alltargets -project $(proj) $(sdk) $(deploy) $(arch) SYMROOT=$(build) 2> "$$BUILD_LOG"; then \
+		echo "✅ Xcode build succeeded"; \
+	else \
+		echo "❌ Xcode build failed, falling back to Command Line Tools"; \
+		if [ -f "$$BUILD_LOG" ] && [ -s "$$BUILD_LOG" ]; then \
+			echo "Xcode build errors:"; \
+			cat "$$BUILD_LOG"; \
+		fi; \
+		$(MAKE) libs-fallback; \
+	fi
 
 libs: DirectHW.c DirectHW.h
 	mkdir -p $(build)/Release
-ifeq ($(is_big_sur_or_later),1)
+ifneq ($(is_big_sur_or_later),0)
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
+	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else
 	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 endif
@@ -158,8 +171,10 @@ endif
 libs-fallback: DirectHW.c DirectHW.h
 	@echo "=== Building with Command Line Tools (fallback) ==="
 	mkdir -p $(build)/Release
-ifeq ($(is_big_sur_or_later),1)
+ifneq ($(is_big_sur_or_later),0)
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
+else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
+	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else
 	$(CC) -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 endif
