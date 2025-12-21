@@ -25,7 +25,12 @@ all: main libs
 # Get macOS version using sw_vers for reliable detection
 # sw_vers -productVersion works in 10.3+ but not 10.2 and earlier
 # Fallback using perl works in 10.1 and later
-macos_version := 0$(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 || sw_vers 2>/dev/null | perl -ne 'if (/ProductVersion:\s*(\d+(\.\d+)?)/) { print $$1 }' | cut -d. -f1-2)
+DETECTED_VERSION := $(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 || sw_vers 2>/dev/null | perl -ne 'if (/ProductVersion:\s*(\d+(\.\d+)?)/) { print $$1 }' | cut -d. -f1-2)
+# Error handling: if version detection failed, abort with clear error message
+ifeq ($(DETECTED_VERSION),)
+$(error Could not detect macOS version. Please ensure sw_vers is available.)
+endif
+macos_version := $(DETECTED_VERSION)
 
 # Version comparisons using proper macOS version detection
 # Convert to integer format (major*10000 + minor*100 + patch) for proper comparison
@@ -60,7 +65,6 @@ arch :=
 ifneq ($(is_sequoia_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build15
-	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 	arch := -arch x86_64 -arch arm64
 else ifneq ($(is_sonoma_or_later), 0)
