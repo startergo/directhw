@@ -50,6 +50,8 @@ jobs:
           fi
           
           echo "=== Starting Xcode Build with $XCODE_PROJ ==="
+          # Create build directory before attempting to write log file
+          mkdir -p "$BUILD_DIR"
           XCODE_BUILD_LOG="$BUILD_DIR/xcode_build.log"
 
           # Capture build output for debugging
@@ -316,7 +318,7 @@ jobs:
           echo "🔧 Known Issues:"
           echo "  - Xcode 16.4 has SDK compatibility issues with older macOS targets"
           echo "  - For production builds, use Xcode 15.x or implement local signing"
-          echo "  - CI creates mock artifacts when build fails to test packaging workflow"
+          echo "  - CI fails when builds fail - no mock artifacts are created"
           echo ""
           echo "📋 Next Steps:"
           echo "  - Test the generated packages locally"
