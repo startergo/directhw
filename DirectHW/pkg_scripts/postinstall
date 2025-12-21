@@ -20,12 +20,9 @@ get_kext_path() {
     local macos_version=$(get_macos_version)
     local kernel_version=$(get_kernel_version)
 
-    # macOS 10.9 (Mavericks) and later use /Library/Extensions
-    if [[ "$(echo "$macos_version >= 10.9" | bc -l 2>/dev/null)" == "1" ]]; then
-        echo "/Library/Extensions"
-    else
-        echo "/System/Library/Extensions"
-    fi
+    # For modern macOS, always use /Library/Extensions (user-accessible)
+    # This avoids SIP restrictions on /System/Library/Extensions
+    echo "/Library/Extensions"
 }
 
 # Function to update kext cache
