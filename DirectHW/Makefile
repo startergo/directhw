@@ -18,20 +18,8 @@
 
 all: main libs
 
-is11   := $(shell bc <<< "$${OSTYPE\#darwin} == 20")
-is10_15 := $(shell bc <<< "$${OSTYPE\#darwin} == 19")
-is10_14 := $(shell bc <<< "$${OSTYPE\#darwin} == 18")
-is10_13 := $(shell bc <<< "$${OSTYPE\#darwin} == 17")
-is10_12 := $(shell bc <<< "$${OSTYPE\#darwin} == 16")
-is10_11 := $(shell bc <<< "$${OSTYPE\#darwin} == 15")
-is10_10 := $(shell bc <<< "$${OSTYPE\#darwin} == 14")
-is10_9 := $(shell bc <<< "$${OSTYPE\#darwin} == 13")
-is10_9plus := $(shell bc <<< "$${OSTYPE\#darwin} >= 13")
-is10_8 := $(shell bc <<< "$${OSTYPE\#darwin} == 12")
-is10_7 := $(shell bc <<< "$${OSTYPE\#darwin} == 11")
-is10_6 := $(shell bc <<< "$${OSTYPE\#darwin} == 10")
-is10_5 := $(shell bc <<< "$${OSTYPE\#darwin} == 9")
-is10_4 := $(shell bc <<< "$${OSTYPE\#darwin} == 8")
+# Note: OSTYPE-based version detection removed for consistency and reliability
+# Use sw_vers-based detection below for all version comparisons
 # Note: Do not append comments to makefile := assignment lines because spaces before the # become part of the assigned string.
 
 # Get macOS version using sw_vers for reliable detection
@@ -42,6 +30,9 @@ macos_version := 0$(shell sw_vers -productVersion 2>/dev/null | cut -d. -f1-2 ||
 # Version comparisons using proper macOS version detection
 # Convert to integer format (major*10000 + minor*100 + patch) for proper comparison
 is_sequoia_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 150000)
+is_sonoma_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 140000)
+is_ventura_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 130000)
+is_monterey_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 120000)
 is_big_sur_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 110000)
 is_catalina_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101500)
 is_mojave_or_later := $(shell expr $(shell echo "$(macos_version)" | sed 's/\./ /' | awk '{print $$1 * 10000 + $$2 * 100 + ($$3 ? $$3 : 0)}') \>= 101400)
@@ -69,6 +60,24 @@ arch :=
 ifneq ($(is_sequoia_or_later), 0)
 	proj := DirectHW.xcodeproj
 	build := build/build15
+	sdk := -sdk macosx
+	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+	arch := -arch x86_64 -arch arm64
+else ifneq ($(is_sonoma_or_later), 0)
+	proj := DirectHW.xcodeproj
+	build := build/build14
+	sdk := -sdk macosx
+	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+	arch := -arch x86_64 -arch arm64
+else ifneq ($(is_ventura_or_later), 0)
+	proj := DirectHW.xcodeproj
+	build := build/build13
+	sdk := -sdk macosx
+	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
+	arch := -arch x86_64 -arch arm64
+else ifneq ($(is_monterey_or_later), 0)
+	proj := DirectHW.xcodeproj
+	build := build/build12
 	sdk := -sdk macosx
 	deploy := MACOSX_DEPLOYMENT_TARGET=10.6
 	arch := -arch x86_64 -arch arm64
@@ -159,7 +168,7 @@ main:
 
 libs: DirectHW.c DirectHW.h
 	mkdir -p $(build)/Release
-ifneq ($(is_big_sur_or_later),0)
+ifneq ($(is_big_sur_or_later)$(is_monterey_or_later)$(is_ventura_or_later)$(is_sonoma_or_later)$(is_sequoia_or_later),0)
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
 	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
@@ -171,7 +180,7 @@ endif
 libs-fallback: DirectHW.c DirectHW.h
 	@echo "=== Building with Command Line Tools (fallback) ==="
 	mkdir -p $(build)/Release
-ifneq ($(is_big_sur_or_later),0)
+ifneq ($(is_big_sur_or_later)$(is_monterey_or_later)$(is_ventura_or_later)$(is_sonoma_or_later)$(is_sequoia_or_later),0)
 	$(CC) -arch x86_64 -arch arm64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
 else ifneq ($(is_mojave_or_later)$(is_high_sierra_or_later),0)
 	$(CC) -arch i386 -arch x86_64 DirectHW.c -dynamiclib -framework IOKit -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -o $(build)/Release/libDirectHW.dylib $(debugsym)
