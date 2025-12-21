@@ -50,12 +50,25 @@ jobs:
           fi
           
           echo "=== Starting Xcode Build with $XCODE_PROJ ==="
-          xcodebuild -alltargets -project "$XCODE_PROJ" \
+          XCODE_BUILD_LOG="$BUILD_DIR/xcode_build.log"
+
+          # Capture build output for debugging
+          if xcodebuild -alltargets -project "$XCODE_PROJ" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             SYMROOT="$BUILD_DIR" \
-            -verbose || echo "Xcode build failed - this is expected with modern Xcode and older projects"
+            -verbose 2> "$XCODE_BUILD_LOG"; then
+            echo "✅ Xcode build command completed"
+          else
+            echo "⚠️ Xcode build failed - this is expected with modern Xcode and older projects"
+
+            # Show error output for debugging if log file exists and has content
+            if [[ -f "$XCODE_BUILD_LOG" && -s "$XCODE_BUILD_LOG" ]]; then
+              echo "Xcode build errors (for debugging):"
+              cat "$XCODE_BUILD_LOG"
+            fi
+          fi
           
           # Check if build succeeded
           if [ -d "$BUILD_DIR/Release" ] && [ -f "$BUILD_DIR/Release/libDirectHW.dylib" ]; then
@@ -155,29 +168,15 @@ jobs:
             # Create distribution package
             productbuild --distribution distribution.xml --package-path . DirectHW.pkg 2>/dev/null || echo "Distribution package creation failed"
           else
-            echo "⚠️  No build artifacts found - creating mock structure for CI testing"
-            echo "This allows the CI to test the packaging workflow even when builds fail"
-            # Create mock build artifacts for CI testing
-            mkdir -p build/buildlatest/Release
-            BUILD_ROOT="build/buildlatest/Release"
-            echo "Mock kext for testing" > "$BUILD_ROOT/DirectHW.kext"
-            echo "Mock framework for testing" > "$BUILD_ROOT/DirectHW.framework"
-            echo "Mock library for testing" > "$BUILD_ROOT/libDirectHW.dylib"
-            
-            # Create minimal packages for CI testing
-            mkdir -p pkg_scripts
-            echo "#!/bin/bash" > pkg_scripts/postinstall
-            echo "echo 'DirectHW CI test postinstall completed'" >> pkg_scripts/postinstall
-            chmod +x pkg_scripts/postinstall
-            
-            # Create minimal component packages
-            mkdir -p pkg_components/lib/usr/local/lib
-            mkdir -p pkg_components/framework/usr/local/frameworks
-            echo "Mock library" > pkg_components/lib/usr/local/lib/libDirectHW.dylib
-            echo "Mock framework" > pkg_components/framework/usr/local/frameworks/DirectHW.framework
-            
-            pkgbuild --root pkg_components/lib --identifier com.directhw.lib --version 1.0 --install-location /usr/local --scripts pkg_scripts DirectHW-lib.pkg 2>/dev/null && echo "✅ Mock library package created" || echo "❌ Mock library package failed"
-            pkgbuild --root pkg_components/framework --identifier com.directhw.framework --version 1.0 --install-location /usr/local --scripts pkg_scripts DirectHW-framework.pkg 2>/dev/null && echo "✅ Mock framework package created" || echo "❌ Mock framework package failed"
+            echo "❌ CRITICAL: No build artifacts found - CI should fail to catch broken builds"
+            echo "This ensures that build failures are caught and fixed rather than silently ignored"
+            echo ""
+            echo "Troubleshooting information:"
+            echo "- Check Xcode build logs above for specific error details"
+            echo "- Verify that make libs fallback completed successfully"
+            echo "- Ensure libDirectHW.dylib was built and placed in the correct location"
+            echo "- Checked directories: build/build15/Release, build/build11/Release, build/buildlatest/Release, build/Release, build/*/Release"
+            exit 1
           fi
 
       - name: Build Universal AppleScript Runner
@@ -263,18 +262,17 @@ jobs:
               exit 1
             fi
           else
-            echo "⚠️  No content for DMG, creating minimal DMG for CI testing"
-            # Create a minimal DMG with just documentation for CI testing
-            echo "DirectHW CI Test - Build artifacts not available due to Xcode compatibility issues" > dmg_contents/README.txt
-            echo "This DMG contains only documentation. Full build artifacts were not generated." >> dmg_contents/README.txt
-            echo "This is expected with Xcode 16.4 and older macOS SDK targets." >> dmg_contents/README.txt
-            hdiutil create -volname "DirectHW CI Test" -srcfolder dmg_contents -ov -format UDZO DirectHW-v1.5.1.dmg
-            if [ $? -eq 0 ]; then
-              echo "✅ Minimal DMG created for CI testing"
-            else
-              echo "❌ Minimal DMG creation failed"
-              exit 1
-            fi
+            echo "❌ CRITICAL: No content found for DMG creation - build artifacts missing"
+            echo "CI should fail when real build artifacts are not available"
+            echo ""
+            echo "Missing artifacts that should have been created:"
+            echo "- libDirectHW.dylib (core library)"
+            echo "- DirectHW.kext (kernel extension)"
+            echo "- DirectHW.framework (framework)"
+            echo "- DirectHW.pkg (installer package)"
+            echo ""
+            echo "This failure ensures broken builds are caught and fixed."
+            exit 1
           fi
 
       - name: Upload DMG Artifact

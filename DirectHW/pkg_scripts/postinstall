@@ -32,8 +32,12 @@ update_kext_cache() {
 
     echo "Updating kext cache for macOS $macos_version..."
 
-    # macOS 10.13 (High Sierra) and later use kmutil
-    if [[ "$(echo "$macos_version >= 10.13" | bc -l 2>/dev/null)" == "1" ]]; then
+    # Proper version comparison for macOS 10.13+ (High Sierra and later)
+    # Convert version to comparable integer (multiply by 100 to handle decimal places)
+    local version_int=$(( $(echo "$macos_version" | sed 's/\./ /' | awk '{print $1 * 10000 + $2 * 100 + ($3 ? $3 : 0)}') ))
+    local high_sierra_int=$((10 * 10000 + 13 * 100))  # 10.13 = 101300
+
+    if [[ $version_int -ge $high_sierra_int ]]; then
         if command -v kmutil >/dev/null 2>&1; then
             echo "Using kmutil to update kext cache..."
             kmutil install --volume-root / --check-rebuild
