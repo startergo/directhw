@@ -62,13 +62,16 @@ static int darwin_init(void)
     }
 
     /* Get the DirectHW driver service */
-    #if MAC_OS_X_VERSION_SDK >= MAC_OS_X_VERSION_10_12
-        /* Use kIOMainPortDefault for macOS 10.12+ SDKs */
-        iokit_uc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("DirectHWService"));
-    #else
-        /* Use kIOMasterPortDefault for older SDKs */
-        iokit_uc = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceMatching("DirectHWService"));
-    #endif
+    /* Use weak linking for maximum compatibility with all SDKs and architectures */
+    /* kIOMainPortDefault exists since macOS 12.1 SDK, kIOMasterPortDefault exists since macOS 10.2.8 */
+    extern const mach_port_t kIOMainPortDefault __attribute__((weak));
+    extern const mach_port_t kIOMasterPortDefault __attribute__((weak));
+
+    /* Create compatibility macro as suggested by Joevt */
+    #define kOurMasterPort (kIOMasterPortDefault ? kIOMasterPortDefault : kIOMainPortDefault)
+
+    /* Use the compatible master port that works with all SDKs and targets */
+    iokit_uc = IOServiceGetMatchingService(kOurMasterPort, IOServiceMatching("DirectHWService"));
 
     if (!iokit_uc) {
         printf("DirectHW.kext not loaded.\n");
