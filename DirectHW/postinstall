@@ -67,12 +67,16 @@ main() {
     # Check if kext was installed in the wrong location during package installation
     if [[ -d "/System/Library/Extensions/DirectHW.kext" && "$kext_path" == "/Library/Extensions" ]]; then
         echo "Moving kext from /System/Library/Extensions to /Library/Extensions..."
+        # Remove existing destination if it exists to avoid nesting
+        [[ -d "/Library/Extensions/DirectHW.kext" ]] && rm -rf "/Library/Extensions/DirectHW.kext"
         # Create destination directory if it doesn't exist
         mkdir -p "/Library/Extensions"
         # Move the kext
         mv "/System/Library/Extensions/DirectHW.kext" "/Library/Extensions/DirectHW.kext"
     elif [[ -d "/Library/Extensions/DirectHW.kext" && "$kext_path" == "/System/Library/Extensions" ]]; then
         echo "Moving kext from /Library/Extensions to /System/Library/Extensions..."
+        # Remove existing destination if it exists to avoid nesting
+        [[ -d "/System/Library/Extensions/DirectHW.kext" ]] && rm -rf "/System/Library/Extensions/DirectHW.kext"
         # Create destination directory if it doesn't exist
         mkdir -p "/System/Library/Extensions"
         # Move the kext
